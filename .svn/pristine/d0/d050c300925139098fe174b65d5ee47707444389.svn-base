@@ -1,0 +1,240 @@
+#include "position.h"
+#include <QtCore/QFile>
+#include <QtGui/QMessageBox>
+#include "misc/muldiv.h"
+
+const QString Position::posFilename_("bpos.bin");
+
+RawData::value_type Pose::zero = 0;//2100;
+RawData::value_type Pose::oneG = 450;
+
+Pose::Pose()
+: x(0), y(1), z(0)
+{
+}
+
+Pose::Pose(const RawData &px, const RawData &py, const RawData &pz)
+{
+	Q_ASSERT(!(px.size() == py.size() == pz.size()));
+
+	float	avex = 0,
+			avey = 0,
+			avez = 0;
+
+	for (int i = 0; i < px.size(); ++i)
+	{
+		avex += (px[i] - zero);
+		avey += (py[i] - zero);
+		avez += (pz[i] - zero);
+	}
+
+	avex /= oneG * px.size();
+	avey /= oneG * py.size();
+	avez /= oneG * pz.size();
+
+	(avex > 1) ? x = 1 : (avex < -1) ? x = -1 : x = avex;
+	(avey > 1) ? y = 1 : (avey < -1) ? y = -1 : y = avey;
+	(avez > 1) ? z = 1 : (avez < -1) ? z = -1 : z = avez;
+}
+
+QColor Pose::color() const
+{
+	return color(type());
+}
+
+int Pose::type() const
+{
+	if (qAbs(x) >= qMax(qAbs(y), qAbs(z)))
+	{
+		if(x >= 0)
+			return Left;
+		else
+			return Right;
+	}
+	else
+	{
+		if (qAbs(y) >= qAbs(z))
+		{
+			if (y >= 0)
+				return Unknown;
+			else
+				return Standing;
+		}
+		else
+		{
+			if (z >= 0)
+				return Supine;
+			else
+				return Prone;
+		}
+	}
+}
+
+QColor Pose::color(int type)
+{
+	switch (type)
+	{
+	case Standing:
+		return QColor(255, 255, 255);
+	case Supine:
+		return QColor(160, 160, 160);
+	case Right:
+		return QColor(128, 192, 128);
+	case Left:
+		return QColor(192, 128, 128);
+	case Prone:
+		return QColor(128, 128, 192);
+	default:
+		return Qt::darkMagenta;
+	}
+}
+
+QString Pose::name(int type)
+{
+	switch (type)
+	{
+	case Standing:
+		return QObject::tr("Стоя");
+	case Supine:
+		return QObject::tr("Спина");
+	case Right:
+		return QObject::tr("Правый");
+	case Left:
+		return QObject::tr("Левый");
+	case Prone:
+		return QObject::tr("Живот");
+	default:
+		return QObject::tr("Неизв.");
+	}
+}
+
+QDataStream &operator<<(QDataStream &out, const Pose &pose)
+{
+	out << pose.x << pose.y << pose.z;
+	return out;
+}
+
+QDataStream &operator>>(QDataStream &in, Pose &pose)
+{
+	in >> pose.x >> pose.y >> pose.z;
+	return in;
+}
+
+Position::Position(const QString &title, const QColor &color, QSplashScreen *splash)
+: Trend(title, color, 10, 0, 0)
+{
+	EnvironmentPtr pEnv;
+	int dataPortion = pEnv->sec2sample(secPerUnit());
+	QString posPath(pEnv->createPath(posFilename_));
+	
+	QString msg(QObject::tr("Расчет тренда двигательной активности... "));
+	splash->showMessage(msg, Qt::AlignBottom);
+
+	if (!pEnv->testOption(FullMode))
+	{
+		Pose::zero = 2703;
+		Pose::oneG = 491;
+	}
+
+	QFile filePos(posPath);
+	if (!filePos.open(QIODevice::ReadOnly))
+	{
+		filePos.close();
+		QFile::remove(posPath);
+		if (filePos.open(QIODevice::WriteOnly))
+		{
+			RawData px(dataPortion);
+			RawData py(dataPortion);
+			RawData pz(dataPortion);
+
+			int portionCount = pEnv->sampleTotal() / dataPortion;
+			
+			for(int i = 0; i < portionCount; ++i)
+			{
+				pEnv->load(X, dataPortion*i, px);
+				pEnv->load(Y, dataPortion*i, py);
+				pEnv->load(Z, dataPortion*i, pz);
+				
+				m_smoothed.push_back( Pose(px, py, pz).type() );
+				
+				splash->showMessage(msg + QString("%1 %").arg((i*100)/portionCount), Qt::AlignBottom);
+			}
+			
+			QDataStream out(&filePos);
+			out.setVersion(QDataStream::Qt_4_7);
+			foreach (uchar poseType, m_smoothed)
+				out << poseType;
+		}
+		else
+		{
+			QMessageBox msgBox;
+			msgBox.setText(QObject::tr("Ошибка при создании файла положения тела."));
+			msgBox.exec();
+		}
+	}
+	else
+	{
+		QDataStream in(&filePos);
+		uchar poseType;
+		if (in.version() == QDataStream::Qt_4_7)
+		{
+			while (true)
+			{
+				in >> poseType;
+				if (in.status() != QDataStream::ReadPastEnd)
+					m_smoothed.push_back(poseType);
+				else
+					break;
+			}
+		}
+	}
+}
+
+Position::~Position()
+{
+}
+
+void Position::draw(QPainter *painter, const QRect &rect, int start, int stop) const
+{
+	Q_ASSERT(start >= 0);
+	Q_ASSERT(start <= stop);
+
+	if (int len = (stop - start) / secPerUnit())
+	{
+		if (len >= smoothed().size()) {
+			len = smoothed().size() - 1;
+		}
+
+		start /= secPerUnit();
+		stop /= secPerUnit();
+		int segment = rect.height() / Pose::MaxPose;
+		for (int i = start+1, j = start; i <= stop; ++i,++j)
+		{
+			QPolygonF curve;
+			curve << QPointF(
+				rect.left() + muldiv(j-start, rect.width(), len),
+				rect.top() + (segment * smoothed().value(start + j)) + segment/2
+			);
+			curve << QPointF(
+				rect.left() + muldiv(i-start, rect.width(), len),
+				rect.top() + (segment * smoothed().value(start + i)) + segment/2
+			);
+			painter->drawPolyline(curve);
+		}
+	}
+}
+
+void Position::drawScale(QPainter *painter, const QRect &rect, const QRect &ext) const
+{
+	QPen pen(Qt::gray, QPen().width(), Qt::DashLine);
+
+	for (int i = Pose::Standing; i < Pose::MaxPose; ++i)
+	{
+		int y = rect.top() + i * (rect.height() / Pose::MaxPose);
+		if (!ext.isNull()) {
+			painter->setPen(pen);
+			painter->drawLine(ext.left(), y, ext.right(), y);
+			painter->setPen(QPen());
+		}
+	}
+}

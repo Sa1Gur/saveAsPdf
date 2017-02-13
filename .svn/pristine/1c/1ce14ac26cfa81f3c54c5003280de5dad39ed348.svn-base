@@ -1,0 +1,28 @@
+#include "median.h"
+
+template<>
+uchar median(QVector<uchar>::const_iterator first, QVector<uchar>::const_iterator last, uchar fake)
+{
+	Q_ASSERT(last >= first);
+
+	quint32 accum = 0, size = 0;
+	while (first != last) {
+		if (*first != fake) {
+			accum += *first;
+			++size;
+		}
+		++first;
+	}
+
+	if (!size) {
+		return 0;
+	}
+
+	accum /= size;
+
+	if (accum > 255) {
+		return (uchar)-127;
+	}
+
+	return (uchar)accum;
+}

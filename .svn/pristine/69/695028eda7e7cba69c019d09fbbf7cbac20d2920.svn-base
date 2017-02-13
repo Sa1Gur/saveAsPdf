@@ -1,0 +1,21 @@
+#ifndef CHANNELS_H
+#define CHANNELS_H
+
+#include "ui_channels.h"
+#include <QtCore/QBitArray>
+
+class ChannelsDlg: public QDialog, public Ui::ChannelsForm
+{
+	Q_OBJECT
+
+public:
+	ChannelsDlg(QWidget *parent = 0);
+
+public Q_SLOTS:
+	void accept();
+
+private:
+	QBitArray mask;
+};
+
+#endif // CHANNELS_H

@@ -1,0 +1,34 @@
+#ifndef SETTINGSFORM_H
+#define SETTINGSFORM_H
+
+#include "ui_settings.h"
+
+class SettingsDlg : public QDialog, public Ui::SettingsForm
+{
+	Q_OBJECT
+
+public:
+	SettingsDlg(QWidget *parent = 0);
+
+public Q_SLOTS:
+	void spo2Accept();
+	void hypoAccept();
+	void dbgAccept();
+	void accept();
+
+signals:
+	void update();
+
+protected:
+	void recalculate(int trend_id);
+
+	QWidget *m_parent;
+
+protected Q_SLOTS:
+	void onStateChangedCheckBox1(int state);
+	void onToggledRadioButton1(bool checked);
+	void onDesaturationParamsChange();
+	void onHypoParamsChange();
+};
+
+#endif // SETTINGSFORM_H

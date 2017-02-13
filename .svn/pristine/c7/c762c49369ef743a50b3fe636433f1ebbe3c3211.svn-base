@@ -1,0 +1,126 @@
+#include "ApplicationData.h"
+
+#include <QtGui/QPrinter>
+#include <QtGui/QPrintDialog>
+#include <QtGui/QPainter>
+
+#include "main/environment.h"
+#include "main/curves.h"
+
+ApplicationDataDlg::ApplicationDataDlg(QWidget *parent)
+:	QDialog(parent),
+	printer_(new QPrinter(QPrinter::HighResolution)),
+	font_("Verdana")
+{
+	setupUi(this);
+	
+	EnvironmentPtr pEnv;
+	lineEdit_Name->setText(QString("%1").arg(pEnv->patientName()));
+	lineEdit_Sex->setText(QString("%1").arg(pEnv->patientSex()));
+	lineEdit_Age->setText(QString("%1").arg(pEnv->patientAge()));
+	lineEdit_Weight->setText(QString("%1").arg(pEnv->patientWeight()));
+	lineEdit_Height->setText(QString("%1").arg(pEnv->patientHeight()));
+	lineEdit_Address->setText(QString("%1").arg(pEnv->patientAddress()));
+	lineEdit_Phone->setText(QString("%1").arg(pEnv->patientPhone()));
+	lineEdit_Purpose->setText(QString("%1").arg(pEnv->patientPurpose()));
+	lineEdit_Department->setText(QString("%1").arg(pEnv->patientDepartment()));
+	lineEdit_Ward->setText(QString("%1").arg(pEnv->patientWard()));
+	lineEdit_Physician->setText(QString("%1").arg(pEnv->patientDoctor()));
+
+	dateEdit_Investigation->setDate(pEnv->inspectionDate());
+	dateEdit_Analyze->setDate(pEnv->analysisDate());
+	
+	saveButton->setEnabled(false);
+}
+
+ApplicationDataDlg::~ApplicationDataDlg()
+{
+	delete printer_;
+}
+
+void ApplicationDataDlg::onData()
+{
+	EnvironmentPtr	pEnv;
+	bool			change = false;
+	if (lineEdit_Name->text() != pEnv->patientName())
+	{
+		change = true;
+	}
+	if (lineEdit_Sex->text() != pEnv->patientSex())
+	{
+		change = true;
+	}
+	if (lineEdit_Age->text().toInt() != pEnv->patientAge())
+	{
+		change = true;
+	}
+	if (lineEdit_Weight->text().toInt() != pEnv->patientWeight())
+	{
+		change = true;
+	}
+	if (lineEdit_Height->text().toInt() != pEnv->patientHeight())
+	{
+		change = true;
+	}
+	if (lineEdit_Address->text() != pEnv->patientAddress())
+	{
+		change = true;
+	}
+	if (lineEdit_Phone->text() != pEnv->patientPhone())
+	{
+		change = true;
+	}
+	if (lineEdit_Purpose->text() != pEnv->patientPurpose())
+	{
+		change = true;
+	}
+	if (lineEdit_Department->text() != pEnv->patientDepartment())
+	{
+		change = true;
+	}
+	if (lineEdit_Ward->text() != pEnv->patientWard())
+	{
+		change = true;
+	}
+	if (lineEdit_Physician->text() != pEnv->patientDoctor())
+	{
+		change = true;
+	}
+	if (dateEdit_Investigation->date() != pEnv->inspectionDate())
+	{
+		change = true;
+	}
+	if (dateEdit_Analyze->date() != pEnv->analysisDate())
+	{
+		change = true;
+	}
+
+	if (change)
+	{
+		saveButton->setEnabled(true);
+	}
+	else
+	{
+		saveButton->setEnabled(false);
+	}
+}
+
+void ApplicationDataDlg::accept()
+{
+	EnvironmentPtr pEnv;
+	lineEdit_Name->text();
+	lineEdit_Sex->text();
+	lineEdit_Age->text().toInt();
+	lineEdit_Weight->text().toInt();
+	lineEdit_Height->text().toInt();
+	lineEdit_Address->text();
+	lineEdit_Phone->text();
+	lineEdit_Purpose->text();
+	lineEdit_Department->text();
+	lineEdit_Ward->text();
+	pEnv->setPatientDoctor(lineEdit_Physician->text());
+	pEnv->setInspectionDate(dateEdit_Investigation->date());
+	pEnv->setAnalysisDate(dateEdit_Analyze->date());
+
+	QDialog::accept();
+}

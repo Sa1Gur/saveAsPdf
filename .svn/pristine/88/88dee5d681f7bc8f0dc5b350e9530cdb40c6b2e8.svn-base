@@ -1,0 +1,176 @@
+#include "scale.h"
+#include "muldiv.h"
+
+Scale::Scale(const Scale::UnitList &units)
+:	units_(units),
+	current_(units.begin()),
+	factor_(1.0)
+{
+}
+
+Scale::~Scale()
+{
+}
+
+const Scale::Unit &Scale::current() const
+{
+	return *current_;
+}
+
+void Scale::setCurrentIndex(int index)
+{
+	if (index > 0 && index < units_.size())
+	{
+		current_ = units_.begin() + index;
+	}
+}
+
+void Scale::setFactor(double factor)
+{
+	factor_ = factor;
+}
+
+void Scale::paint(QPainter *painter, const QRect &rect, int m_distance) const
+{
+	const int count	= 20;									// количество делений
+	double	scale	= current_->first.toDouble();			// текущий масштаб
+	double	coeff	= -rect.height() / (scale * factor_);	// коэффициент
+	double	step	= scale / count;						// цена деления
+	int		yzero	= rect.height() / 2;					// уровень нуля
+
+	int j = 0;
+	for (double m=0, n=0; m <= (scale / 2), n >= -(scale / 2); m += step, n -= step)
+	{
+		int y1 = yzero + (int)((m * factor_) * coeff);
+		int y2 = yzero + (int)((n * factor_) * coeff);
+
+		if (j % 5)
+		{
+			painter->drawLine(rect.right() - 4, y1, rect.right(), y1);
+			painter->drawLine(rect.right() - 4, y2, rect.right(), y2);
+		}
+		else
+		{
+			painter->drawLine(rect.right() - 8, y1, rect.right(), y1);
+			painter->drawLine(rect.right() - 8, y2, rect.right(), y2);
+			
+			painter->drawText(QRect(rect.right() - 48, y1 - 6, 40, 12), Qt::AlignCenter, QString("%1").arg(m, 3));
+			if (n != 0)
+			{
+				painter->drawText(QRect(rect.right() - 48, y2 - 6, 40, 12), Qt::AlignCenter, QString("%1").arg(n, 3));
+			}
+		}
+
+		++j;
+	}
+}
+
+void Scale::zoomIn()
+{
+	if ((current_ - 1) >= units_.begin())
+	{
+		--current_;
+	}
+}
+
+void Scale::zoomOut()
+{
+	if ((current_ + 1) < units_.end())
+	{
+		++current_;
+	}
+}
+
+Zoom::Zoom(const UnitList &units)
+: Scale(units)
+{
+}
+
+void Zoom::paint(QPainter *painter, const QRect &rect) const
+{
+	const int count = 20;	// количество делений
+	for (int i = 0; i < count; ++i)
+	{
+		int y = muldiv(i, rect.height(), count);
+		painter->drawLine(rect.right() - ((i % 5) ? 4 : 8), y, rect.right(), y);
+	}
+
+	painter->drawText(QRect(rect.topLeft(), rect.bottomRight() - QPoint(8,0)), Qt::AlignCenter, current().second);
+}
+
+Range::Range(const UnitList &units)
+: Scale(units)
+{
+}
+
+void Range::paint(QPainter *painter, const QRect &rect) const
+{
+	int upper = current().first.toInt(),
+		lower = current().second.toInt();
+
+	for (int i = lower; i <= upper; i += 5)
+	{
+		int y = rect.bottom() - ((i - lower) * rect.height()) / (upper - lower),
+			x;
+		if (i % 10)
+		{
+			x = rect.right() - 4;
+		}
+		else
+		{
+			x = rect.right() - 8;
+			QRect rc(rect.left(), y - 6, rect.width(), 12);
+			painter->drawText(rc, Qt::AlignCenter, QString("%1").arg(i));
+		}
+		
+		painter->drawLine(x, y, rect.right(), y);
+	}
+}
+
+RangedZoom::RangedZoom(const UnitList &units)
+:	Scale(units)
+{
+}
+
+void RangedZoom::paint(QPainter *painter, const QRect &rect, int m_distance) const
+{
+	const int count	= 20;									// количество делений
+	//double	scale	= current().first.toDouble(),		// текущий масштаб
+	//		coeff	= -rect.height() / (scale * factor()),	// коэффициент
+	//		step	= scale / count;						// цена деления
+	//int		yzero	= rect.height() / 2,				// уровень нуля
+	//		j		= 0;
+
+	//for (double m = 0, n = 0; m <= (scale / 2), n >= -(scale / 2); m += step, n -= step)
+	//{
+	//	int y1 = yzero + (int)((m * factor()) * coeff);
+	//	int y2 = yzero + (int)((n * factor()) * coeff);
+
+	//	if (j % 5)
+	//	{
+	//		painter->drawLine(rect.right() - 4, y1, rect.right(), y1);
+	//		painter->drawLine(rect.right() - 4, y2, rect.right(), y2);
+	//	}
+	//	else
+	//	{
+	//		painter->drawLine(rect.right() - 8, y1, rect.right(), y1);
+	//		painter->drawLine(rect.right() - 8, y2, rect.right(), y2);
+	//		
+	//		painter->drawText(QRect(rect.right() - 48, y1 - 6, 40, 12), Qt::AlignCenter, QString("%1").arg(m, 3));
+	//		if (n != 0)
+	//		{
+	//			painter->drawText(QRect(rect.right() - 48, y2 - 6, 40, 12), Qt::AlignCenter, QString("%1").arg(n, 3));
+	//		}
+	//	}
+
+	//	++j;
+	//}
+
+ 	for (int i = 0; i < count; ++i)
+	{
+		int y = muldiv(i, rect.height(), count);
+		painter->drawLine(rect.right() - ((i % 5) ? 4 : 8), y, rect.right(), y);		
+		if (!(i % 5))
+			painter->drawText(QRect(QPoint(rect.left(), y - 5), QPoint(rect.right() - 8, y + 5)), Qt::AlignCenter, QString("%1").arg(50 - m_distance + ((count / 2 - i) * (current().first.toInt() - current().second.toInt())) / count));
+	}
+}

@@ -1,0 +1,111 @@
+#include "basics.h"
+#include "main/environment.h"
+#include "main/episode.h"
+#include <QtSql/QSqlQuery>
+#include <QtGui/QMessageBox>
+
+BasicsDlg::BasicsDlg(QWidget *parent)
+: QDialog(parent)
+{
+	setupUi(this);
+
+	EnvironmentPtr pEnv;
+	QDateTime recordStart(pEnv->startTime());
+	QDateTime recordEnd(pEnv->startTime().addSecs(pEnv->secsTotal()));
+
+	// ограничить значения дат в рамках записи
+	dateEdit1->setMinimumDate(recordStart.date());
+	dateEdit2->setMinimumDate(recordStart.date());
+
+	// установить время начала события по умолчанию (старт записи)
+	dateEdit1->setDate(recordStart.date());
+	timeEdit1->setTime(recordStart.time());
+	
+	// установить время окончания события по умолчанию (конец записи)
+	dateEdit2->setDate(recordEnd.date());
+	timeEdit2->setTime(recordEnd.time());
+	
+	// установить тип события по умолчанию (Сон)
+	radioButton2->setChecked(true);
+}
+
+void BasicsDlg::accept()
+{
+	EnvironmentPtr pEnv;
+	QDateTime recordStart(pEnv->startTime());
+	QDateTime recordEnd(pEnv->startTime().addSecs(pEnv->secsTotal()));
+	QDateTime start(dateEdit1->date(), timeEdit1->time());
+	QDateTime end(dateEdit2->date(), timeEdit2->time());
+
+	// проверка диапазона
+	if (start < recordStart || end < recordStart || start > recordEnd || end > recordEnd)
+	{
+		QMessageBox::critical(this, tr("Ошибка"), tr("Границы события выходят за пределы записи."));
+		return;
+	}
+
+	Episode eNew(
+		pEnv->startTime().secsTo(start),
+		pEnv->startTime().secsTo(end),
+		radioButton1->isChecked() ? Episode::Wake :
+		radioButton2->isChecked() ? Episode::Dream : Episode::Artefacts
+	);
+	
+	// запросить уже имеющиеся базовые события
+	QSqlQuery query;
+	query.prepare("SELECT * FROM episodes WHERE type=? OR type=? OR type=?");
+	query.addBindValue(Episode::Wake);
+	query.addBindValue(Episode::Dream);
+	query.addBindValue(Episode::Artefacts);
+	query.exec();
+
+	while (query.next())
+	{
+		Episode e(query);
+		
+		// найти событие, кот. включает в себя новое
+		if (e.intersects(eNew))
+		{
+			QSqlQuery q;
+			
+			// удалить это событие
+			q.exec(QString("DELETE FROM episodes WHERE id = %1").arg(e.id()));
+
+			if (e.type() != eNew.type())
+			{
+				if (e.bsec() < eNew.bsec() - 1)
+				{
+					// вставить оставшийся фрагмент вперед нового
+					q.prepare("INSERT INTO episodes (bsec, esec, type) VALUES(?, ?, ?);");
+					q.addBindValue(e.bsec());
+					q.addBindValue(eNew.bsec() - 1);
+					q.addBindValue(e.type());
+					q.exec();
+				}
+			
+				if (eNew.esec() + 1 < e.esec())
+				{
+					// вставить оставшийся фрагмент позади нового
+					q.prepare("INSERT INTO episodes (bsec, esec, type) VALUES(?, ?, ?);");
+					q.addBindValue(eNew.esec() + 1);
+					q.addBindValue(e.esec());
+					q.addBindValue(e.type());
+					q.exec();
+				}			
+			}
+			else
+			{
+				if (e.bsec() < eNew.bsec())
+					eNew.move_start(e.bsec() - eNew.bsec());
+				
+				if (eNew.esec() < e.esec())
+					eNew.add_to_end(e.esec() - eNew.esec());				
+			}
+		}
+	}
+
+	// вставить новое событие
+	eNew.insert();
+
+	QMessageBox::information(this, tr("Отметка базовых событий"), tr("Событие добавлено"));
+}

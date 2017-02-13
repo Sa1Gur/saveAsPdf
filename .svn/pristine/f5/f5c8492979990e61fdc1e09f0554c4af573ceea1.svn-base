@@ -1,0 +1,430 @@
+#include "richedit.h"
+#include <QtGui/QPushButton>
+#include <QtGui/QTextEdit>
+#include <QtGui/QHBoxLayout>
+#include <QtGui/QVBoxLayout>
+#include <QtGui/QComboBox>
+#include <QtGui/QFontComboBox>
+#include <QtGui/QApplication>
+#include <QtGui/QTextList>
+#include <QtCore/QTextCodec>
+#include <QtGui/QColorDialog>
+#include <QtCore/QFile>
+#include <QtGui/QTextDocumentWriter>
+#include <QtGui/QClipboard>
+#include <QtCore/QMimeData>
+
+RichEdit::RichEdit(QWidget *parent)
+: QWidget(parent)
+{
+	QTextCodec *codec = QTextCodec::codecForName("Windows-1251");
+	QTextCodec::setCodecForCStrings(codec);
+	QTextCodec::setCodecForTr(codec);
+
+	comboStyle = new QComboBox;
+	comboStyle->addItem(tr("Стандартный"));
+	comboStyle->addItem(tr("Маркированный список"));
+	comboStyle->addItem(tr("Нумерованный список"));
+	connect(comboStyle, SIGNAL(activated(int)), this, SLOT(textStyle(int)));
+	
+	comboFont = new QFontComboBox;
+	connect(comboFont, SIGNAL(activated(QString)), this, SLOT(textFamily(QString)));
+	
+	comboSize = new QComboBox;
+	comboSize->setObjectName("comboSize");
+	comboSize->setEditable(true);
+	
+	QFontDatabase db;
+	foreach(int size, db.standardSizes())
+		comboSize->addItem(QString::number(size));
+	
+	connect(comboSize, SIGNAL(activated(QString)), this, SLOT(textSize(QString)));
+	comboSize->setCurrentIndex(comboSize->findText(QString::number(QApplication::font().pointSize())));
+
+	textEdit = new QTextEdit;
+	connect(textEdit, SIGNAL(currentCharFormatChanged(QTextCharFormat)), this, SLOT(currentCharFormatChanged(QTextCharFormat)));
+	connect(textEdit, SIGNAL(cursorPositionChanged()), this, SLOT(cursorPositionChanged()));
+
+	buttonUndo = new QPushButton;
+	buttonUndo->setIcon(QIcon(":/RichEdit/images/editundo.png"));
+	buttonUndo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonUndo->setMinimumSize(32, 32);
+	buttonUndo->setMaximumSize(32, 32);
+	buttonUndo->setEnabled(false);
+	buttonUndo->setToolTip(tr("Отменить последнее действие"));
+	connect(textEdit->document(), SIGNAL(undoAvailable(bool)), buttonUndo, SLOT(setEnabled(bool)));
+	connect(buttonUndo, SIGNAL(clicked()), textEdit, SLOT(undo()));
+	
+	buttonRedo = new QPushButton;
+	buttonRedo->setIcon(QIcon(":/RichEdit/images/editredo.png"));
+	buttonRedo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonRedo->setMinimumSize(32, 32);
+	buttonRedo->setMaximumSize(32, 32);
+	buttonRedo->setEnabled(false);
+	buttonRedo->setToolTip(tr("Повторить последнее действие"));
+	connect(textEdit->document(), SIGNAL(redoAvailable(bool)), buttonRedo, SLOT(setEnabled(bool)));
+	connect(buttonRedo, SIGNAL(clicked()), textEdit, SLOT(redo()));
+
+	buttonCut = new QPushButton;
+	buttonCut->setIcon(QIcon(":/RichEdit/images/editcut.png"));
+	buttonCut->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonCut->setMinimumSize(32, 32);
+	buttonCut->setMaximumSize(32, 32);
+	buttonCut->setEnabled(false);
+	buttonCut->setToolTip(tr("Вырезать"));
+	connect(buttonCut, SIGNAL(clicked()), textEdit, SLOT(cut()));
+	connect(textEdit, SIGNAL(copyAvailable(bool)), buttonCut, SLOT(setEnabled(bool)));
+
+	buttonCopy = new QPushButton;
+	buttonCopy->setIcon(QIcon(":/RichEdit/images/editcopy.png"));
+	buttonCopy->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonCopy->setMinimumSize(32, 32);
+	buttonCopy->setMaximumSize(32, 32);
+	buttonCopy->setEnabled(false);
+	buttonCopy->setToolTip(tr("Копировать"));
+	connect(buttonCopy, SIGNAL(clicked()), textEdit, SLOT(copy()));
+	connect(textEdit, SIGNAL(copyAvailable(bool)), buttonCopy, SLOT(setEnabled(bool)));
+
+	buttonPaste = new QPushButton;
+	buttonPaste->setIcon(QIcon(":/RichEdit/images/editpaste.png"));
+	buttonPaste->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonPaste->setMinimumSize(32, 32);
+	buttonPaste->setMaximumSize(32, 32);
+	buttonPaste->setEnabled(false);
+	buttonPaste->setToolTip(tr("Вставить"));
+	connect(buttonPaste, SIGNAL(clicked()), textEdit, SLOT(paste()));
+#ifndef QT_NO_CLIPBOARD
+	connect(QApplication::clipboard(), SIGNAL(dataChanged()), this, SLOT(clipboardDataChanged()));
+#endif
+
+	buttonBold = new QPushButton;
+	buttonBold->setIcon(QIcon(":/RichEdit/images/textbold.png"));
+	buttonBold->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonBold->setMinimumSize(32, 32);
+	buttonBold->setMaximumSize(32, 32);
+	buttonBold->setCheckable(true);
+	buttonBold->setToolTip(tr("Жирный"));
+	connect(buttonBold, SIGNAL(clicked()), this, SLOT(textBold()));
+	
+	buttonUnderline = new QPushButton;
+	buttonUnderline->setIcon(QIcon(":/RichEdit/images/textunder.png"));
+	buttonUnderline->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonUnderline->setMinimumSize(32, 32);
+	buttonUnderline->setMaximumSize(32, 32);
+	buttonUnderline->setCheckable(true);
+	buttonUnderline->setToolTip(tr("Подчеркнутый"));
+	connect(buttonUnderline, SIGNAL(clicked()), this, SLOT(textUnderline()));
+	
+	buttonItalic = new QPushButton;
+	buttonItalic->setIcon(QIcon(":/RichEdit/images/textitalic.png"));
+	buttonItalic->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonItalic->setMinimumSize(32, 32);
+	buttonItalic->setMaximumSize(32, 32);
+	buttonItalic->setCheckable(true);
+	buttonItalic->setToolTip(tr("Курсив"));
+	connect(buttonItalic, SIGNAL(clicked()), this, SLOT(textItalic()));
+
+	buttonLeft = new QPushButton;
+	buttonLeft->setIcon(QIcon(":/RichEdit/images/textleft.png"));
+	buttonLeft->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonLeft->setMinimumSize(32, 32);
+	buttonLeft->setMaximumSize(32, 32);
+	buttonLeft->setCheckable(true);
+	buttonLeft->setToolTip(tr("По левому краю"));
+	connect(buttonLeft, SIGNAL(clicked()), this, SLOT(textLeft()));
+	
+	buttonCenter = new QPushButton;
+	buttonCenter->setIcon(QIcon(":/RichEdit/images/textcenter.png"));
+	buttonCenter->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonCenter->setMinimumSize(32, 32);
+	buttonCenter->setMaximumSize(32, 32);
+	buttonCenter->setCheckable(true);
+	buttonCenter->setToolTip(tr("По центру"));
+	connect(buttonCenter, SIGNAL(clicked()), this, SLOT(textCenter()));
+
+	buttonRight = new QPushButton;
+	buttonRight->setIcon(QIcon(":/RichEdit/images/textright.png"));
+	buttonRight->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonRight->setMinimumSize(32, 32);
+	buttonRight->setMaximumSize(32, 32);
+	buttonRight->setCheckable(true);
+	buttonRight->setToolTip(tr("По правому краю"));
+	connect(buttonRight, SIGNAL(clicked()), this, SLOT(textRight()));
+
+	buttonJustify = new QPushButton;
+	buttonJustify->setIcon(QIcon(":/RichEdit/images/textjustify.png"));
+	buttonJustify->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonJustify->setMinimumSize(32, 32);
+	buttonJustify->setMaximumSize(32, 32);
+	buttonJustify->setCheckable(true);
+	buttonJustify->setToolTip(tr("По ширине"));
+	connect(buttonJustify, SIGNAL(clicked()), this, SLOT(textJustify()));
+
+	QPixmap pix(16, 16);
+	pix.fill(Qt::black);
+	buttonColor = new QPushButton;
+	buttonColor->setIcon(pix);
+	buttonColor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+	buttonColor->setMinimumSize(32, 32);
+	buttonColor->setMaximumSize(32, 32);
+	buttonColor->setToolTip(tr("Цвет текста"));
+	connect(buttonColor, SIGNAL(clicked()), this, SLOT(textColor()));
+
+	static const int spacingWidth = 10;
+	
+	QHBoxLayout *toolLayout = new QHBoxLayout;
+	toolLayout->addWidget(comboStyle);
+	toolLayout->addWidget(comboFont);
+	toolLayout->addWidget(comboSize);
+	toolLayout->addSpacing(spacingWidth);
+	toolLayout->addWidget(buttonUndo);
+	toolLayout->addWidget(buttonRedo);
+	toolLayout->addWidget(buttonCut);
+	toolLayout->addWidget(buttonCopy);
+	toolLayout->addWidget(buttonPaste);
+	toolLayout->addSpacing(spacingWidth);
+	toolLayout->addWidget(buttonBold);
+	toolLayout->addWidget(buttonUnderline);
+	toolLayout->addWidget(buttonItalic);
+	toolLayout->addSpacing(spacingWidth);
+	toolLayout->addWidget(buttonLeft);
+	toolLayout->addWidget(buttonCenter);
+	toolLayout->addWidget(buttonRight);
+	toolLayout->addWidget(buttonJustify);
+	toolLayout->addSpacing(spacingWidth);
+	toolLayout->addWidget(buttonColor);
+
+	QVBoxLayout *mainLayout = new QVBoxLayout;
+	mainLayout->addLayout(toolLayout);
+	mainLayout->addWidget(textEdit);
+
+	setLayout(mainLayout);
+	textEdit->setFocus();
+}
+
+QTextDocument *RichEdit::document() const
+{
+	return textEdit->document();
+}
+
+QTextEdit *RichEdit::editor() const
+{
+	return textEdit;
+}
+
+void RichEdit::load(const QString &filename)
+{
+	QFile file(filename);
+	if (file.open(QIODevice::ReadOnly)) {
+		QByteArray data = file.readAll();
+		QTextCodec *codec = Qt::codecForHtml(data);
+		QString str = codec->toUnicode(data);
+		if (Qt::mightBeRichText(str)) {
+			textEdit->setHtml(str);
+		} else {
+			str = QString::fromLocal8Bit(data);
+			textEdit->setPlainText(str);
+		}
+	}
+}
+
+void RichEdit::save(const QString &filename)
+{
+	QTextDocumentWriter writer(filename);
+	bool success = writer.write(textEdit->document());
+	if (success)
+		textEdit->document()->setModified(false);
+}
+
+void RichEdit::textFamily(const QString &family)
+{
+	QTextCharFormat fmt;
+	fmt.setFontFamily(family);
+	mergeFormatOnWordOrSelection(fmt);
+	textEdit->setFocus();
+}
+
+void RichEdit::textSize(const QString &pt)
+{
+	qreal pointSize = pt.toFloat();
+	if (pt.toFloat() > 0) {
+		QTextCharFormat fmt;
+		fmt.setFontPointSize(pointSize);
+		mergeFormatOnWordOrSelection(fmt);
+	}
+	textEdit->setFocus();
+}
+
+void RichEdit::textStyle(int styleIndex)
+{
+	QTextCursor cursor = textEdit->textCursor();
+	
+	if (styleIndex != 0) {
+		QTextListFormat::Style style = QTextListFormat::ListDisc;
+		
+		switch (styleIndex) {
+			 default:
+			 case 1:
+				 style = QTextListFormat::ListDisc;
+				 break;
+			 case 2:
+				 style = QTextListFormat::ListDecimal;
+				 break;
+		}
+		
+		cursor.beginEditBlock();
+		
+		QTextBlockFormat blockFmt = cursor.blockFormat();
+		QTextListFormat listFmt;
+		
+		if (cursor.currentList()) {
+			listFmt = cursor.currentList()->format();
+		} else {
+			listFmt.setIndent(blockFmt.indent() + 1);
+			blockFmt.setIndent(0);
+			cursor.setBlockFormat(blockFmt);
+		}
+		
+		listFmt.setStyle(style);
+		cursor.createList(listFmt);
+		cursor.endEditBlock();
+	}
+	else {
+		QTextBlockFormat bfmt;
+		bfmt.setObjectIndex(-1);
+		cursor.mergeBlockFormat(bfmt);
+	}
+
+	textEdit->setFocus();
+}
+
+void RichEdit::textBold()
+{
+	QTextCharFormat fmt;
+	fmt.setFontWeight(buttonBold->isChecked() ? QFont::Bold : QFont::Normal);
+	mergeFormatOnWordOrSelection(fmt);
+	textEdit->setFocus();
+}
+
+void RichEdit::textUnderline()
+{
+	QTextCharFormat fmt;
+	fmt.setFontUnderline(buttonUnderline->isChecked());
+	mergeFormatOnWordOrSelection(fmt);
+	textEdit->setFocus();
+}
+
+void RichEdit::textItalic()
+{
+	QTextCharFormat fmt;
+	fmt.setFontItalic(buttonItalic->isChecked());
+	mergeFormatOnWordOrSelection(fmt);
+	textEdit->setFocus();
+}
+
+void RichEdit::textLeft()
+{
+	textEdit->setAlignment(Qt::AlignLeft | Qt::AlignAbsolute);
+	alignmentUncheckButtons();
+}
+
+void RichEdit::textCenter()
+{
+	textEdit->setAlignment(Qt::AlignHCenter);
+	alignmentUncheckButtons();
+}
+
+void RichEdit::textRight()
+{
+	textEdit->setAlignment(Qt::AlignRight | Qt::AlignAbsolute);
+	alignmentUncheckButtons();
+}
+
+void RichEdit::textJustify()
+{
+	textEdit->setAlignment(Qt::AlignJustify);
+	alignmentUncheckButtons();
+}
+
+void RichEdit::textColor()
+{
+	QColor col = QColorDialog::getColor(textEdit->textColor(), this);
+	if (col.isValid()) {
+		QTextCharFormat fmt;
+		fmt.setForeground(col);
+		mergeFormatOnWordOrSelection(fmt);
+		colorChanged(col);
+	}
+
+	textEdit->setFocus();
+ }
+
+void RichEdit::clipboardDataChanged()
+{
+#ifndef QT_NO_CLIPBOARD
+	if (const QMimeData *md = QApplication::clipboard()->mimeData()) {
+		buttonPaste->setEnabled(md->hasText());
+	}
+#endif
+}
+
+void RichEdit::currentCharFormatChanged(const QTextCharFormat &format)
+{
+	fontChanged(format.font());
+	colorChanged(format.foreground().color());
+}
+
+void RichEdit::cursorPositionChanged()
+{
+	alignmentChanged(textEdit->alignment());
+}
+
+void RichEdit::mergeFormatOnWordOrSelection(const QTextCharFormat &format)
+{
+	QTextCursor cursor = textEdit->textCursor();
+	if (!cursor.hasSelection())
+		cursor.select(QTextCursor::WordUnderCursor);
+	cursor.mergeCharFormat(format);
+	textEdit->mergeCurrentCharFormat(format);
+}
+
+void RichEdit::fontChanged(const QFont &font)
+{
+	comboFont->setCurrentIndex(comboFont->findText(QFontInfo(font).family()));
+	comboSize->setCurrentIndex(comboSize->findText(QString::number(font.pointSize())));
+	buttonBold->setChecked(font.bold());
+	buttonItalic->setChecked(font.italic());
+	buttonUnderline->setChecked(font.underline());
+}
+
+void RichEdit::colorChanged(const QColor &color)
+{
+	QPixmap pix(16, 16);
+	pix.fill(color);
+	buttonColor->setIcon(pix);
+}
+
+void RichEdit::alignmentChanged(Qt::Alignment aligment)
+{
+	if (aligment & Qt::AlignLeft) {
+		alignmentUncheckButtons();
+		buttonLeft->setChecked(true);
+	} else if (aligment & Qt::AlignHCenter) {
+		alignmentUncheckButtons();
+		buttonCenter->setChecked(true);
+	} else if (aligment & Qt::AlignRight) {
+		alignmentUncheckButtons();
+		buttonRight->setChecked(true);
+	} else if (aligment & Qt::AlignJustify) {
+		alignmentUncheckButtons();
+		buttonJustify->setChecked(true);
+	}
+}
+
+void RichEdit::alignmentUncheckButtons()
+{
+	buttonLeft->setChecked(false);
+	buttonCenter->setChecked(false);
+	buttonRight->setChecked(false);
+	buttonJustify->setChecked(false);
+}

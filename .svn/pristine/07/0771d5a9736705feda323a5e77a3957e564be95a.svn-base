@@ -1,0 +1,2 @@
+C:\Qt\4.7.3\bin\qmake -tp vc richedit.pro
+pause

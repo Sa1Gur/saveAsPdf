@@ -1,0 +1,10 @@
+#include "pulse.h"
+
+Pulse::Pulse(const QString &title, const QColor &color)
+: Trend(title, color, 10, 0, 250)
+{
+}
+
+Pulse::~Pulse()
+{
+}

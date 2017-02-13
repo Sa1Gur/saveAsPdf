@@ -1,0 +1,544 @@
+#include "trendwnd.h"
+
+#include <QtGui/QStylePainter>
+#include <QtGui/QAction>
+#include <QtGui/QMouseEvent>
+#include <QtCore/qmath.h>
+#include <QtSql/QSqlQuery>
+#include <QtGui/qmenu.h>
+
+#include "main/environment.h"
+#include "trends/trends.h"
+#include "trends/position.h"
+#include "main/episode.h"
+#include "misc/muldiv.h"
+
+#if _WIN32
+    #include <windows.h>
+#endif
+
+TrendWnd::TrendWnd(QWidget *parent)
+: QWidget(parent)
+{
+	setBackgroundRole(QPalette::Light);
+	setAutoFillBackground(true);
+	setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+	timeScales_.push_back(SecsInDay);
+	timeScales_.push_back(SecsInHour*12);
+	timeScales_.push_back(SecsInHour*6);
+	timeScales_.push_back(SecsInHour*2);
+	timeScales_.push_back(SecsInMinute*24);
+	timeScale_ = timeScales_.begin();
+
+	EnvironmentPtr pEnv;
+	gridStart_ = pEnv->startTime();
+	
+	//context menu
+	colorsMainWidget = new BodyPositionColorWidget(this);
+	colorsMainWidget->setWindowFlags(Qt::Popup);
+	colorsMainWidget->setAttribute(Qt::WA_NoMouseReplay);
+	setContextMenuPolicy(Qt::DefaultContextMenu);
+	//tooltip
+	colorsCurrentWidget = new CurrentPositionColorWidget(this);
+	colorsCurrentWidget->setWindowOpacity(0.5);
+	colorsCurrentWidget->setWindowFlags(Qt::ToolTip);
+	colorsCurrentWidget->setFocusPolicy(Qt::NoFocus);
+	//colorsCurrentWidget->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+#if _WIN32//Specific WinApi code, but WA_TransparentForMouseEvents won't work...
+    HWND hwnd = (HWND)colorsCurrentWidget->winId();
+    LONG styles = GetWindowLong(hwnd, GWL_EXSTYLE);
+    SetWindowLong(hwnd, GWL_EXSTYLE, styles | WS_EX_TRANSPARENT);
+#endif
+
+	setMouseTracking(true);
+	///////////////
+}
+
+TrendWnd::~TrendWnd()
+{
+	delete colorsMainWidget;
+	timeScales_.clear();
+}
+
+QSize TrendWnd::minimumSizeHint() const
+{
+	return QSize(800, 250);
+}
+
+QSize TrendWnd::sizeHint() const
+{
+	return QSize(800, 250);
+}
+
+void TrendWnd::resizeEvent(QResizeEvent *e)
+{
+	QWidget::resizeEvent(e);
+	
+	rectTop_.setTopLeft( rect().topLeft() + QPoint(LeftPadding, Spacing) );
+	rectTop_.setSize( QSize(rect().width() - (LeftPadding+(Spacing*2)), rect().height()/10) );
+	m_rectLeft.setTopLeft( rect().topLeft() + QPoint(0, rectTop_.height() + Spacing) );
+	m_rectLeft.setSize( QSize(LeftPadding, rect().height() - (Spacing*2 + rect().height()/5)) );
+	rectMid_.setTopLeft( rect().topLeft() + QPoint(LeftPadding, rectTop_.height() + Spacing) );
+	rectMid_.setSize( QSize(rect().width() - (LeftPadding+(Spacing*2)), rect().height() - (Spacing*2 + rect().height()/5)) );
+	rectBottom_.setTopLeft( rect().topLeft() + QPoint(LeftPadding, rectTop_.height() + rectMid_.height() + Spacing) );
+	rectBottom_.setSize( QSize(rect().width() - (LeftPadding+(Spacing*2)), rect().height()/10) );
+
+
+	// Correcting sizes of rects
+	
+	while (rectMid_.height() % VertGridCount)
+	{
+		m_rectLeft.setHeight(rectMid_.height()-1);
+		rectMid_.setHeight(rectMid_.height()-1);
+		rectBottom_.moveTop(rectBottom_.top()-1);
+	}
+
+	while (rectMid_.width() % HorzGridCount)
+	{
+		rectMid_.setWidth(rectMid_.width() - 1);
+		rectTop_.setWidth(rectTop_.width() - 1);
+		rectBottom_.setWidth(rectBottom_.width() - 1);
+	}
+
+	Q_ASSERT(!(rectMid_.height() % VertGridCount));
+	Q_ASSERT(!(rectMid_.width() % HorzGridCount));
+}
+
+void TrendWnd::paintEvent(QPaintEvent *e)
+{
+	pixmap_ = QPixmap(size());
+	pixmap_.fill(this, 0, 0);
+	QPainter painter(&pixmap_);
+	painter.initFrom(this);
+
+	drawBorder(painter);
+	drawTrends(painter);
+	drawGrid(painter);
+	drawCursor(painter);
+	drawEvents(painter);
+	
+	QStylePainter stylePainter(this);
+	stylePainter.drawPixmap(0, 0, pixmap_);
+}
+
+void TrendWnd::contextMenuEvent(QContextMenuEvent *e)
+{
+	
+	colorsMainWidget->move(e->globalPos());
+	colorsMainWidget->show();
+}
+
+void TrendWnd::mousePressEvent(QMouseEvent *e)
+{
+	if (e->button() == Qt::LeftButton)
+	{
+		if (rectMid_.contains(e->pos()))
+		{
+			EnvironmentPtr pEnv;
+			QDateTime tClicked(gridStart_);
+			tClicked = tClicked.addSecs(muldiv(*timeScale_, e->x() - rectMid_.left(), rectMid_.width()) - pEnv->secsPerScreen() / 2);
+			pEnv->setCurrentTime(tClicked);
+
+			emit positionChanged();
+		}
+	}
+}
+
+void TrendWnd::mouseMoveEvent(QMouseEvent *e)
+{
+	if (rectMid_.contains(e->pos()))
+	{
+		EnvironmentPtr	pEnv;
+		const QDateTime tStart(pEnv->startTime());
+		const QDateTime tCurrent( pEnv->currentTime() );
+
+		int startSec, stopSec;
+		int secPos = tStart.secsTo(tCurrent);	// Zero-based position from record's start
+		QRect wRect(rectMid_);					// Working area for trends
+
+		if ((secPos + pEnv->secsPerScreen()) <= *timeScale_)
+		{
+			gridStart_ = tStart;
+			startSec = 0;
+
+			if (*timeScale_ > pEnv->secsTotal())
+			{
+				stopSec = pEnv->secsTotal();
+				wRect.setRight(wRect.left() + (stopSec * rectMid_.width()) / *timeScale_);
+			}
+			else
+			{
+				stopSec = startSec + *timeScale_;
+			}
+		}
+		else
+		{
+			int endOffset = gridStart_.secsTo(tCurrent) + pEnv->secsPerScreen();
+		
+			if (endOffset > *timeScale_)
+			{
+				gridStart_ = tCurrent;
+				startSec = secPos;
+			}
+			else if (gridStart_.secsTo(tCurrent) <= 0)
+			{
+				gridStart_ = gridStart_.addSecs(-(*timeScale_));
+				startSec = tStart.secsTo(gridStart_);
+			}
+			else
+			{
+				startSec = tStart.secsTo(gridStart_);
+			}
+
+			if (gridStart_.secsTo(tCurrent) == *timeScale_)
+			{
+				gridStart_ = tCurrent;
+				startSec = secPos;
+			}
+
+			if ((startSec + pEnv->secsPerScreen() + *timeScale_) > pEnv->secsTotal())
+			{
+				stopSec = pEnv->secsTotal();
+				wRect.setRight(wRect.left() + ((stopSec - startSec) * rectMid_.width()) / *timeScale_);
+			}
+			else
+			{
+				stopSec = startSec + *timeScale_;
+			}
+		}
+	
+		TrendsPtr trends;
+		if (int len = (stopSec - startSec) / trends->trends()[POSE]->secPerUnit())
+		{
+			if (len >= trends->trends()[POSE]->smoothed().size())
+			{
+				len = trends->trends()[POSE]->smoothed().size() - 1;
+			}
+
+			int start = startSec / trends->trends()[POSE]->secPerUnit();
+		
+			int sec = ((e->x() - rectMid_.left()) * len) / wRect.width();
+			
+			colorsCurrentWidget->updatePos(trends->trends()[POSE]->smoothed().value(start + sec));
+			colorsCurrentWidget->move(e->globalPos());
+			colorsCurrentWidget->show();
+		}
+	}
+	else
+	{
+		colorsCurrentWidget->hide();
+	}
+}
+
+void TrendWnd::compress(QAction *action)
+{
+	if ((timeScale_-1) >= timeScales_.begin())
+	{
+		--timeScale_;
+		update();
+
+		if (timeScale_ == timeScales_.begin())
+		{
+			action->setDisabled(true);
+		}
+	}
+}
+
+void TrendWnd::expand(QAction *action)
+{
+	if ((timeScale_+1) < timeScales_.end()) {
+		++timeScale_;
+		update();
+		
+		if ((timeScale_+1) == timeScales_.end()) {
+			action->setDisabled(true);
+		}
+	}
+}
+
+void TrendWnd::drawBorder(QPainter &painter)
+{
+	painter.setPen(palette().color(QPalette::Active, QPalette::Dark));
+	painter.drawLine(rect().topLeft(), rect().topRight());
+	painter.drawLine(rect().topRight() - QPoint(1,0), rect().bottomRight() - QPoint(1,1));
+	painter.drawLine(rect().topLeft(), rect().bottomLeft());
+	painter.drawLine(rect().bottomLeft() - QPoint(0,1), rect().bottomRight() - QPoint(0,1));
+	painter.setPen(palette().color(QPalette::Active, QPalette::Light));
+	painter.drawLine(rect().bottomLeft(), rect().bottomRight());
+	painter.drawLine(rect().topRight(), rect().bottomRight() - QPoint(0,1));
+}
+
+void TrendWnd::drawTrends(QPainter &painter)
+{
+	EnvironmentPtr pEnv;
+	const QDateTime tStart(pEnv->startTime());
+	const QDateTime tCurrent( pEnv->currentTime() );
+
+	int startSec, stopSec;
+	int secPos = tStart.secsTo(tCurrent);	// Zero-based position from record's start
+	QRect wRect(rectMid_);					// Working area for trends
+
+	if ((secPos + pEnv->secsPerScreen()) <= *timeScale_)
+	{
+		gridStart_ = tStart;
+		startSec = 0;
+
+		if (*timeScale_ > pEnv->secsTotal())
+		{
+			stopSec = pEnv->secsTotal();
+			wRect.setRight(wRect.left() + (stopSec * rectMid_.width()) / *timeScale_);
+		}
+		else
+		{
+			stopSec = startSec + *timeScale_;
+		}
+	}
+	else
+	{
+		int endOffset = gridStart_.secsTo(tCurrent) + pEnv->secsPerScreen();
+		
+		if (endOffset > *timeScale_)
+		{
+			gridStart_ = tCurrent;
+			startSec = secPos;
+		}
+		else if (gridStart_.secsTo(tCurrent) <= 0)
+		{
+			gridStart_ = gridStart_.addSecs(-(*timeScale_));
+			startSec = tStart.secsTo(gridStart_);
+		}
+		else
+		{
+			startSec = tStart.secsTo(gridStart_);
+		}
+
+		if (gridStart_.secsTo(tCurrent) == *timeScale_)
+		{
+			gridStart_ = tCurrent;
+			startSec = secPos;
+		}
+
+		if ((startSec + pEnv->secsPerScreen() + *timeScale_) > pEnv->secsTotal())
+		{
+			stopSec = pEnv->secsTotal();
+			wRect.setRight(wRect.left() + ((stopSec - startSec) * rectMid_.width()) / *timeScale_);
+		}
+		else
+		{
+			stopSec = startSec + *timeScale_;
+		}
+	}
+	
+	TrendsPtr trends;
+
+	if (int len = (stopSec - startSec) / trends->trends()[POSE]->secPerUnit())
+	{
+		if (len >= trends->trends()[POSE]->smoothed().size())
+		{
+			len = trends->trends()[POSE]->smoothed().size() - 1;
+		}
+
+		int start = startSec / trends->trends()[POSE]->secPerUnit();
+		
+		for (int x = 0; x <= wRect.width(); ++x)
+		{
+			int sec = (x * len) / wRect.width();
+			painter.setPen(  Pose::color(trends->trends()[POSE]->smoothed().value(start + sec)) );
+			painter.drawLine( wRect.left() + x, wRect.top(), wRect.left() + x, wRect.bottom() );
+		}
+	}
+	
+	for (int i = PULSE; i < MAX_TREND; ++i)
+	{
+		trends->trends()[i]->draw(&painter, wRect, startSec, stopSec);
+	}
+}
+
+void TrendWnd::drawGrid(QPainter &painter)
+{
+	QDateTime time(gridStart_);
+	
+	const int vertUnit = rectMid_.height() / VertGridCount;
+
+	TrendsPtr trends;
+	const int spoGrad = trends->trends().at(SPO2)->gradation();
+	int spoFactor = spoGrad / VertGridCount;
+	const int pulsGrad = trends->trends().at(PULSE)->gradation();
+	int pulsFactor = pulsGrad / VertGridCount;
+	const int canGrad = trends->trends().at(CANN)->gradation();
+	int canFactor = canGrad / VertGridCount;
+	const int scaleRectWidth = m_rectLeft.width() / 3;
+	QRect spoRect(m_rectLeft.left() + scaleRectWidth * 2, 0, scaleRectWidth, 0);
+	QRect pulsRect(m_rectLeft.left() + scaleRectWidth, 0, scaleRectWidth, 0);
+	QRect canRect(m_rectLeft.left(), 0, scaleRectWidth, 0);
+
+	QPen gridPen(Qt::darkGray, 0, Qt::DashLine);
+	QPen spoPen(trends->trends().at(SPO2)->color());
+	QPen pulsPen(trends->trends().at(PULSE)->color());
+	QPen canPen(trends->trends().at(CANN)->color());
+	
+	for (int i = 0; i <= VertGridCount; ++i)
+	{
+		int y = m_rectLeft.top() + (vertUnit*i);
+		painter.setPen(gridPen);
+		painter.drawLine(rectMid_.left(), y, rectMid_.right(), y);
+
+		if (!(i % 2)) {
+			painter.setPen(spoPen);
+			spoRect.setTop(y - vertUnit/2);
+			spoRect.setBottom(y + vertUnit/2);
+			painter.drawText(spoRect, Qt::AlignCenter, QString("%1").arg(spoGrad - i * spoFactor));
+			
+			painter.setPen(pulsPen);
+			pulsRect.setTop(y - vertUnit/2);
+			pulsRect.setBottom(y + vertUnit/2);
+			painter.drawText(pulsRect, Qt::AlignCenter, QString("%1").arg(pulsGrad - i * pulsFactor));
+			
+			painter.setPen(canPen);
+			canRect.setTop(y - vertUnit/2);
+			canRect.setBottom(y + vertUnit/2);
+			painter.drawText(canRect, Qt::AlignCenter, QString("%1").arg(canGrad - i * canFactor));
+		}
+	}
+
+	painter.setPen(gridPen);
+	
+	int horzUnit = rectMid_.width() / HorzGridCount;
+
+	if (*timeScale_ > (SecsInHour * 12)) {
+		while (time.time().minute() > 0 || time.time().second() > 0) {
+			time = time.addSecs(1);
+		}
+	}
+	else if (*timeScale_ > (SecsInHour * 6)) {
+		while (time.time().minute() % 30 || time.time().second() > 0) {
+			time = time.addSecs(1);
+		}
+	}
+	else if (*timeScale_ > (SecsInHour * 2)) {
+		while (time.time().minute() % 5 || time.time().second() > 0) {
+			time = time.addSecs(1);
+		}
+	}
+	else if (*timeScale_ <= (SecsInMinute * 24)) {
+		while (time.time().minute() % 1 || time.time().second() > 0) {
+			time = time.addSecs(1);
+		}
+	}
+
+	painter.drawLine(rectMid_.topLeft(), rectMid_.bottomLeft());
+	painter.drawLine(rectMid_.topRight(), rectMid_.bottomRight());
+
+	for (int i = 0; i <= HorzGridCount-1; ++i) {
+		int xpos = rectMid_.left() + (gridStart_.secsTo(time) * rectMid_.width()) / *timeScale_;
+		painter.drawLine(xpos, rectMid_.top(), xpos, rectMid_.bottom());
+		painter.drawText(
+			QRect(xpos - horzUnit/2, rectBottom_.top(), horzUnit, rectBottom_.height()),
+			Qt::AlignCenter, time.toString("hh:mm"));
+		time = time.addSecs(*timeScale_/HorzGridCount);
+	}
+}
+
+void TrendWnd::drawCursor(QPainter &painter)
+{
+	EnvironmentPtr pEnv;
+	const QDateTime tCurrent( pEnv->currentTime() );
+
+	painter.setPen(Qt::black);
+	
+	int secDiff = gridStart_.secsTo(tCurrent);
+	
+	int clPos = rectMid_.left() + (secDiff * rectMid_.width()) / *timeScale_;
+	int crPos = clPos + (pEnv->secsPerScreen() * rectMid_.width()) / *timeScale_;
+	if ((crPos == clPos) && crPos <= rectMid_.right())
+		++crPos;
+	painter.drawLine(clPos, rectMid_.top(), clPos, rectMid_.bottom());
+	painter.drawLine(crPos, rectMid_.top(), crPos, rectMid_.bottom());
+}
+
+void TrendWnd::drawEvents(QPainter &painter)
+{
+	EnvironmentPtr pEnv;
+	int beginSec = pEnv->startTime().secsTo(gridStart_);
+	int endSec = beginSec + *timeScale_;
+	
+	QSqlQuery query;
+
+	query.prepare("SELECT * FROM episodes WHERE type = ? OR type = ?");
+	query.addBindValue(Episode::Dream);
+	query.addBindValue(Episode::Artefacts);
+	query.exec();
+
+	while ( query.next() )
+	{
+		Episode e(query);
+
+		if (e.bsec() >= beginSec && e.esec() <= endSec) {
+			QRect temp(
+				rectTop_.left() + muldiv(e.bsec() - beginSec, rectTop_.width(), *timeScale_),
+				rectTop_.top() + 5,
+				muldiv(e.length(), rectTop_.width(), *timeScale_),
+				rectTop_.height() - 10);
+			painter.fillRect(temp, e.color());
+		}
+		else if (e.bsec() <= beginSec && e.esec() >= endSec) {
+			QRect temp(
+				rectTop_.left(),
+				rectTop_.top() + 5,
+				rectTop_.width(),
+				rectTop_.height() - 10);
+			painter.fillRect(temp, e.color());
+		}
+		else if (e.bsec() <= beginSec && e.esec() >= beginSec && e.esec() <= endSec) {
+			QRect temp(
+				rectTop_.left(),
+				rectTop_.top() + 5,
+				muldiv(e.esec() - beginSec, rectTop_.width(), *timeScale_),
+				rectTop_.height() - 10);
+			painter.fillRect(temp, e.color());
+		}
+		else if (e.bsec() >= beginSec && e.bsec() <= endSec && e.esec() >= endSec) {
+			QRect temp(
+				rectTop_.left() + muldiv(e.bsec() - beginSec, rectTop_.width(), *timeScale_),
+				rectTop_.top() + 5,
+				muldiv(endSec - e.bsec(), rectTop_.width(), *timeScale_),
+				rectTop_.height() - 10);
+			painter.fillRect(temp, e.color());
+		}
+	}
+
+	query.prepare("SELECT * FROM episodes WHERE bsec >= ? AND esec <= ? "
+		"AND type != ? AND type != ? AND type != ?");
+	query.addBindValue(beginSec);
+	query.addBindValue(endSec);
+	query.addBindValue(Episode::Wake);
+	query.addBindValue(Episode::Dream);
+	query.addBindValue(Episode::Artefacts);
+	query.exec();
+	
+	while (query.next()) {
+		Episode e(query);
+		QRect temp(
+			rectTop_.left() + ((e.bsec() - beginSec) * rectTop_.width()) /  (*timeScale_),
+			rectTop_.top() + 5,
+			(e.length() * rectTop_.width()) /  (*timeScale_),
+			rectTop_.height() - 10);
+		if (temp.width() == 0)
+			temp.setWidth(1);
+		painter.fillRect(temp, e.color());
+	}
+
+	// Нажатие кнопки "Событие пациента"
+
+	painter.setPen(Qt::darkMagenta);
+	quint32 startMSec = beginSec * ONE_SEC;
+	while (pEnv->nextEvent(startMSec)) {
+		int xPos = rectTop_.left() + ((startMSec/ONE_SEC - beginSec) * rectTop_.width()) /  (*timeScale_);
+		int y2 = rectTop_.bottom() - 5;
+		painter.drawLine(xPos, rectTop_.top() + 5, xPos, y2);
+		painter.drawLine(xPos, y2, xPos-2, y2-3);
+		painter.drawLine(xPos, y2, xPos+2, y2-3);
+	}
+	painter.setPen(Qt::NoPen);
+}

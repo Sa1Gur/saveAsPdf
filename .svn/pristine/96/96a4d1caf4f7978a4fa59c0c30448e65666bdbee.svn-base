@@ -1,0 +1,29 @@
+#ifndef TEMPLATES_H
+#define TEMPLATES_H
+
+#include "ui_editor.h"
+
+/*!
+	Conclusion Templates Editor
+*/
+class TemplatesDlg: public QDialog, public Ui::EditorForm
+{
+	Q_OBJECT
+
+public:
+	TemplatesDlg(QWidget *parent = 0);
+
+public Q_SLOTS:
+	void load(const QString &fileName);
+	void print();
+	void save();
+
+protected:
+	void fileSave();
+	void createFileList();
+
+private:
+	QString currentFileName;
+};
+
+#endif // TEMPLATES_H

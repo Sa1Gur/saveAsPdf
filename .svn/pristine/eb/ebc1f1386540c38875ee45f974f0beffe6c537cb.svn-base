@@ -1,0 +1,32 @@
+#ifndef PULSEWND_H
+#define PULSEWND_H
+
+#include <QtGui/QHBoxLayout>
+#include "scalewnd.h"
+
+class PulseWnd: public QWidget
+{
+	Q_OBJECT
+
+public:
+	PulseWnd(QWidget *parent = 0);
+
+public slots:
+	void setRange(const Scale::Unit &range);
+	void setZero(int  zero);
+
+protected:
+	bool eventFilter(QObject *target, QEvent *e);
+	void onPaintView();
+
+private:
+	QHBoxLayout* m_layout;
+	ScaleWnd*    m_range;
+	QWidget*     m_view;
+	QPixmap      m_pixmap;
+	int          m_upper,
+				m_lower,
+				m_zero;
+};
+
+#endif // PULSEWND_H

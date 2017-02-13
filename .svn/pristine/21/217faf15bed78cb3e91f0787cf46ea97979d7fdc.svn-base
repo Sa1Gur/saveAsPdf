@@ -1,0 +1,96 @@
+#ifndef TABLE_H
+#define TABLE_H
+
+#include <QtCore/QString>
+#include <QtGui/QFont>
+#include <QtCore/QPair>
+#include <QtCore/QMap>
+#include <QtCore/QRect>
+
+#ifndef TABLE_BEGIN
+#define TABLE_BEGIN namespace Table {
+#endif
+
+#ifndef TABLE_END
+#define TABLE_END }
+#endif
+
+TABLE_BEGIN
+
+/*!
+	—пособ задани€ границ вокруг €чейки
+*/
+enum Border {
+	BorderNone		= 0,
+	BorderLeft		= 1,
+	BorderTop		= 2,
+	BorderRight		= 4,
+	BorderBottom	= 8,
+	BorderAll		= 15
+};
+
+
+
+/*!
+	ѕара значений Address представл€ет собой адрес €чейки.
+	first	- пор€дковый номер столбца nCol (начина€ с 0)
+	second	- пор€дковый номер строки nRow (начина€ с 0)
+*/
+typedef QPair<int, int> Address;
+
+
+
+/*!
+	 ласс Cell описывает €чейку таблицы
+*/
+class Cell
+{
+public:
+	Cell(const QString &text, const QFont &font, int flags, int width = -1, int height = -1, int border = BorderAll);
+	~Cell();
+
+	void draw(QPainter *painter, const QRect &rect) const;
+	int width() const;
+	int height() const;
+
+private:
+	QString m_text;
+	QFont   m_font;
+	int     m_flags;
+	int     m_border;
+	int     m_width;	// ширина в процентах
+	int		m_height;	// высота в процентах
+};
+
+
+
+/*!
+	Ќабор €чеек.
+*/
+typedef QMap<Address, Cell> Cells;
+
+
+
+/*!
+	 ласс View предназначен дл€ хранени€ €чеек
+	и отображени€ получившейс€ из них таблицы.
+*/
+class View
+{
+public:
+	View(const QRect &rect);
+	~View();
+
+	void insert(const Address &addr, const Cell &cell);
+	void draw(QPainter *painter) const;
+
+private:
+	Cells	m_cells;
+	int		m_nCols;
+	int		m_nRows;
+	QRect	m_rect;
+};
+
+TABLE_END
+
+#endif // TABLE_H

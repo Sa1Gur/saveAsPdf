@@ -1,0 +1,130 @@
+#include "PrintScreen.h"
+
+#include <QtGui/QPrinter>
+#include <QtGui/QPrintDialog>
+#include <QtGui/QPainter>
+
+#include "main/environment.h"
+#include "main/curves.h"
+
+PrintScreenDlg::PrintScreenDlg(QWidget *parent)
+:	QDialog(parent),
+	printer_(new QPrinter(QPrinter::HighResolution)),
+	font_("Verdana")
+{
+	setupUi(this);
+
+	printer_->setOrientation(QPrinter::Landscape);
+
+	QMap<int, QString> speeds;
+	speeds.insert(5000,		tr("50 мм/с"));
+	speeds.insert(10000,	tr("25 мм/с"));
+	speeds.insert(25000,	tr("10 мм/с"));
+	speeds.insert(50000,	tr("5 мм/с"));
+	speeds.insert(60000,	tr("1 мин/стр."));
+	speeds.insert(120000,	tr("2 мин/стр."));
+	speeds.insert(600000,	tr("10 мин/стр."));
+	
+	QMapIterator<int, QString> i(speeds);
+	while (i.hasNext())
+	{
+		i.next();
+		speedComboBox->addItem(i.value(), i.key());
+	}
+
+	// скорость печати по умолчанию 1 мин/стр.
+	speedComboBox->setCurrentIndex(4);
+	
+	EnvironmentPtr pEnv;
+	startTimeEdit->setDateTime(pEnv->currentTime());
+	endTimeEdit->setDateTime(pEnv->currentTime().addMSecs(speedComboBox->itemData(speedComboBox->currentIndex()).toInt()));
+
+	radioButton_2->setChecked(true);
+}
+
+PrintScreenDlg::~PrintScreenDlg()
+{
+	delete printer_;
+}
+
+void PrintScreenDlg::print()
+{
+	QPrintDialog printDlg(printer_, this);
+	if (printDlg.exec())
+	{
+		printScreen(printer_);
+	}
+}
+
+void PrintScreenDlg::preview()
+{
+}
+
+void PrintScreenDlg::speedIndexChanged(int index)
+{
+	endTimeEdit->setDateTime(startTimeEdit->dateTime().addMSecs(speedComboBox->itemData(index).toInt()));
+}
+
+void PrintScreenDlg::printScreen(QPrinter *printer)
+{
+	QPainter painter(printer);
+
+	QRect albumList_A4(QPoint(0, 0), QSize(297, 210));
+	QRect selectedPaper(albumList_A4);
+	
+	const QTransform tmm = QTransform::fromScale(painter.device()->physicalDpiX() / 25.4, painter.device()->physicalDpiY() / 25.4);
+	painter.setWorldTransform(tmm, false);
+	
+	QFont mfont("Times");
+	mfont.setPixelSize(3);
+
+	EnvironmentPtr pEnv;
+
+	/* Вывод заголовка */ {
+		painter.setFont(mfont);
+		QRect rect1(35, 3, 250, 4);
+		painter.drawRect(rect1);
+		painter.drawText(rect1, Qt::AlignVCenter, tr("Astrocard® Somno Studio ЗАО МЕДИТЕК (РОССИЯ) © 2010-2013"));
+		mfont.setBold(true);
+		painter.setFont(mfont);
+		QRect rect2(35, 7, 250, 4);
+		painter.drawText(rect2, Qt::AlignVCenter, QString("Ф.И.О.: %1").arg(pEnv->patientName()));
+		painter.drawText(rect2, Qt::AlignRight|Qt::AlignVCenter, QString("%1 г.").arg(pEnv->currentTime().date().toString("dd.MM.yyyy")));
+		QRect rect3(35, 11, 250, 4);
+		painter.drawText(rect3, Qt::AlignVCenter, QString("%1 %2 Страница 1").arg(pEnv->currentTime().time().toString("hh:mm:ss")).arg(speedComboBox->currentText()));
+	}
+
+	/* Вывод осциллограмм */ {
+		QRect	rect1(35, 15, 250, 180);
+		painter.drawRect(rect1);
+
+		for (int i = Rt, iRc = 0; i < MaxData; ++i)
+		{
+			if (pEnv->isVisible(static_cast<DataIndex>(i)))
+			{
+				QRect	rect_(35, 15 + iRc * 75, 250, 25);				
+
+				DataCurve	*m_curve(new DataCurve(static_cast<DataIndex>(i)));
+				//QPixmap		m_pixmap;
+				//m_pixmap = QPixmap(size());
+				//m_pixmap.fill(m_view, 0, 0);
+				//QPainter painter(&m_pixmap);
+				//painter.initFrom(m_view);
+
+				m_curve->setSampleCount(pEnv->samplePerScreen());
+				m_curve->setSampleStart(pEnv->currentSample());
+
+				ColorScheme cs = pEnv->colorScheme(m_curve->index());
+				//painter.fillRect(rect_, cs.second);
+				painter.setPen(Qt::black);//cs.first);
+
+				m_curve->draw(&painter, rect_);
+
+				//QStylePainter stylePainter(m_view);
+				//stylePainter.drawPixmap(0, 0, m_pixmap);
+
+				iRc++;
+			}
+		}
+	}
+}

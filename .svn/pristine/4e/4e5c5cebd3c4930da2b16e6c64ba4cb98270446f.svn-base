@@ -1,0 +1,114 @@
+#ifndef MEDIAN_H
+#define MEDIAN_H
+
+#include <QtCore/QVector>
+#include <numeric>
+#include <algorithm>
+
+/*!
+	Simple median
+*/
+template<typename T>
+T median(const QVector<T> &data)
+{
+	T acc = std::accumulate<QVector<T>::const_iterator, T>(data.begin(), data.end(), 0);
+	T size = static_cast<T>(data.size());
+	return  acc/size;
+}
+
+
+template<typename Type, typename Iter>
+Type median(Iter first, Iter last, Type fake);
+
+
+/*!
+	median Hodges-Lehmann
+
+	Отбрасывает по x% от начала и от конца отсортированного массива.
+	Возвращает среднее из оставшихся значений.
+*/
+template<typename T>
+T medianHodjLehm(QVector<T> &data, int x = 10)
+{
+	qSort(data.begin(), data.end());
+	int rem_count = (data.size() * x) / 100;
+	for(int i = 0; i < rem_count; ++i)
+	{
+		data.erase(data.begin());
+		data.erase(data.end() - 1);
+	}
+	
+	return median<T>(data);
+}
+
+/*!
+	Subtract median from each element of vector
+	\return A median for vector
+*/
+template<typename T>
+T medianSubtract(QVector<T> &data, const T &fakeValue)
+{
+	int count = 0;
+	T accum = 0;
+	QVector<T>::iterator i = data.begin();
+	while (i != data.end()) {
+		if (*i != fakeValue) {
+			accum += *i;
+			++count;
+		}
+		++i;
+	}
+	
+	T m = accum / count;
+	
+	i = data.begin();
+	while (i != data.end()) {
+		if (*i != fakeValue) {
+			*i -= m;
+		}
+		++i;
+	}
+	
+	return m;
+}
+
+/*!
+	Median plus check if data close
+*/
+template<typename T>
+T medianGap(const QVector<T> &data, const T &gapValue)
+{
+	int count = 0;
+	T accum = 0;
+	//QVector<T>::iterator i = data.begin();
+	for (int i = 0; i < data.size(); i++)
+	{
+		bool add = true;
+		if (i >= 1 && i + 1 < data.size())
+		{
+			int a1 = data[i - 1]; 
+			int a2 = data[i];
+			int a3 = data[i + 1];
+
+			if (((a1 < 80) || (a2 < 80)) || (a3 < 80))
+			{
+				a1 = a1;
+			}
+
+			add = false;
+			if (((data[i] - data[i - 1]) * (data[i] - data[i - 1]) <= gapValue) && ((data[i] - data[i + 1]) * (data[i] - data[i + 1]) <= gapValue))
+			{
+				add = true;
+			}
+		}
+
+		if (add)
+		{
+			accum += data[i];
+			++count;
+		}
+	}
+	return accum / count;
+}
+
+#endif // MEDIAN_H

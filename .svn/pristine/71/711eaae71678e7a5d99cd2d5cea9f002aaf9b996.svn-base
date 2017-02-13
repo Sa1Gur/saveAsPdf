@@ -1,0 +1,25 @@
+#ifndef PRINT_SCREEN_H
+#define PRINT_SCREEN_H
+
+#include "ui_print.h"
+
+class PrintScreenDlg: public QDialog, public Ui::PrintForm
+{
+	Q_OBJECT
+
+public:
+	PrintScreenDlg(QWidget *parent = 0);
+	~PrintScreenDlg();
+
+public Q_SLOTS:
+	void print();
+	void preview();
+	void speedIndexChanged(int index);
+	void printScreen(QPrinter *printer);
+
+private:
+	QPrinter *printer_;
+	QFont font_;
+};
+
+#endif // PRINT_SCREEN_H

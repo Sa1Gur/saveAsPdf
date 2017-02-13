@@ -1,0 +1,292 @@
+#include "episode.h"
+#include "environment.h"
+#include "trends/trends.h"
+#include "trends/spo2.h"
+
+Episode::Episode(int bsec, int esec, int kind, qreal bval, qreal eval)
+:	id_(0),
+	bsec_(bsec),
+	esec_(esec),
+	type_(kind),
+	bval_(bval),
+	eval_(eval),
+	id_valid_for_queries_(false)
+{
+	if (bsec_ > esec_)
+	{
+		qSwap(bsec_, esec_);
+	}
+	
+	QSqlQuery q;
+	q.prepare("SELECT title FROM types WHERE id = ?;");
+	q.addBindValue(type_);
+	q.exec();
+	if (q.next())
+	{
+		title_ = q.value(0).toString();
+	}
+}
+
+Episode::Episode(const QSqlQuery &query)
+:	id_(query.value(Id).toInt()),
+	bsec_(query.value(BegSec).toInt()),
+	esec_(query.value(EndSec).toInt()),
+	type_(query.value(Type).toInt()),
+	bval_(query.value(BegVal).toReal()),
+	eval_(query.value(EndVal).toReal()),
+	id_valid_for_queries_(true)
+{
+	QSqlQuery q;
+	q.prepare("SELECT title FROM types WHERE id = ?;");
+	q.addBindValue(type_);
+	q.exec();
+	if (q.next())
+	{
+		title_ = q.value(0).toString();
+	}
+}
+
+qreal calculate(int sec_)
+{
+	qreal val_ = 0;
+
+	TrendsPtr	ptr;
+	Trend		*trend = ptr->trends().at(SPO2);
+	if (Spo2	*pSpo2 = dynamic_cast<Spo2*>(trend))
+	{
+		EnvironmentPtr pEnv;
+		val_ = pSpo2->chanval().value(sec_, 0);
+		return val_;
+		
+		RawData		ir(pEnv->samplePerScreen());		// данные для IR
+		RawData		red(pEnv->samplePerScreen());		// данные для RED
+		RawData		smoothed(pEnv->samplePerScreen());	// буфер для сглаженной кривой
+		Spo2::Waves temp;
+		pEnv->load(Ir,	pEnv->currentSample(), ir);
+		pEnv->load(Red, pEnv->currentSample(), red);
+		pSpo2->build(ir, red, smoothed, pEnv->currentSample(), temp, false);
+		for (int i = 0; i < temp.size() - 1; i++)
+		{
+			if ((temp[i].mnPos + pEnv->currentSample() <= pEnv->sec2sample(sec_)) && (pEnv->sec2sample(sec_) < temp[i + 1].mnPos + pEnv->currentSample()))
+			{
+				val_ = temp[i].spo2;
+				break;
+			}
+		}
+	}
+
+	return val_;
+}
+
+void Episode::move_start(int msecs)
+{
+	int secs = qRound((qreal)msecs / 1000.0);
+
+	if ((bsec_ + secs) < esec_)
+	{
+		bsec_ += secs;
+		if (type_ == Desaturation)
+		{
+			bval_ = calculate(bsec_);
+		}
+	}
+}
+
+void Episode::add_to_end(int msecs)
+{
+	int secs = qRound((qreal)msecs / 1000.0);
+
+	if ((esec_ + secs) > bsec_)
+	{
+		esec_ += secs;
+		if (type_ == Desaturation)
+		{
+			eval_ = calculate(esec_);
+		}
+	}
+}
+
+QColor Episode::color(int type)
+{
+	EnvironmentPtr pEnv;
+	return pEnv->colorScheme(type + MaxData).first;
+}
+
+bool Episode::contains(const Episode &other) const
+{
+	return (bsec_ <= other.bsec_) && (esec_ >= other.esec_);
+}
+
+bool Episode::intersects(const Episode &other) const
+{
+	return (((bsec_ <= other.bsec_) && (other.bsec_ <= esec_)) || ((other.bsec_ <= bsec_) && (bsec_ <= other.esec_)));
+}
+
+qreal Episode::diff() const
+{
+	return qAbs(eval_ - bval_);
+}
+
+QString Episode::text() const
+{
+	switch (type_)
+	{
+	case Desaturation:
+		return QString("%1\n%2 сек\n%3 - %4 %").arg(title_).arg(length()).arg(qRound(bval_)).arg(qRound(eval_));
+	case Hypopnea:
+	case CentrApnea:
+	case ObstrApnea:
+		return QString("%1\n%2 сек").arg(title_).arg(length());
+	default:
+		return title_;
+	}
+}
+
+bool Episode::insert()
+{
+	if (isConflicted())
+	{
+		return false;
+	}
+
+	QSqlQuery query;
+	query.prepare("INSERT INTO episodes (bsec, esec, type, bval, eval) VALUES(?, ?, ?, ?, ?);");
+	query.addBindValue(bsec_);
+	query.addBindValue(esec_);
+	query.addBindValue(type_);
+	query.addBindValue(bval_);
+	query.addBindValue(eval_);
+	
+	if (query.exec())
+	{
+		QSqlQuery qForId;
+		qForId.prepare("SELECT * FROM episodes WHERE (bsec = ?) AND (esec = ?) AND (type = ?) AND (bval = ?) AND (eval = ?);");
+		qForId.addBindValue(bsec_);
+		qForId.addBindValue(esec_);
+		qForId.addBindValue(type_);
+		qForId.addBindValue(bval_);
+		qForId.addBindValue(eval_);
+		if (qForId.exec())
+		{
+			while (qForId.next())
+			{
+				id_ = qForId.value(Id).toInt();
+			}
+			
+			id_valid_for_queries_ = true;
+			return true;
+		}
+
+		return false;
+	}
+
+	return false;
+}
+
+bool Episode::remove()
+{
+	if (!id_valid_for_queries_)
+		return false;
+
+	QSqlQuery query;
+	query.prepare("DELETE FROM episodes WHERE id = ?");
+	query.addBindValue(id_);
+	
+	if (query.exec())
+	{
+		id_valid_for_queries_ = false;
+		return true;
+	}
+	
+	return false;
+}
+
+bool Episode::update()
+{
+	if (!id_valid_for_queries_)
+	{
+		return false;
+	}
+
+	if (isConflicted())
+	{
+		return false;
+	}
+
+	QSqlQuery query;
+	query.prepare("UPDATE episodes SET bsec=?, esec=?, type=?, bval=?, eval=? WHERE id=?");
+	query.addBindValue(bsec_);
+	query.addBindValue(esec_);
+	query.addBindValue(type_);
+	query.addBindValue(bval_);
+	query.addBindValue(eval_);
+	query.addBindValue(id_);
+
+	return query.exec();
+}
+
+bool Episode::isConflicted() const
+{
+	QSqlQuery query;
+	query.prepare("SELECT * FROM episodes WHERE (bsec <= ? ) AND (esec BETWEEN ? AND ?) OR (bsec <= ?) AND (esec >= ?) OR ((bsec BETWEEN ? AND ?) AND (esec BETWEEN ? AND ?));");
+	query.addBindValue(bsec_);
+	query.addBindValue(bsec_);
+	query.addBindValue(esec_);
+	query.addBindValue(esec_);
+	query.addBindValue(esec_);
+	query.addBindValue(bsec_);
+	query.addBindValue(esec_);
+	query.addBindValue(bsec_);
+	query.addBindValue(esec_);
+	query.exec();
+	while (query.next())
+	{
+		Episode test(query);
+		if (id_ != test.id())
+		{
+			if (type_ == Hypopnea || type_ == CentrApnea || type_ == ObstrApnea)
+			{
+				if (test.type() == Hypopnea || test.type() == CentrApnea || test.type() == ObstrApnea)
+				{
+					return true;
+				}
+			}
+			
+			if (type_ == Desaturation && test.type() == Desaturation)
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+bool Episode::followedBy(int sec, int type)
+{
+	QSqlQuery query;
+	query.prepare("SELECT * FROM episodes WHERE (bsec >= ? ) AND (bsec <= ? );");
+	query.addBindValue(bsec_);
+	query.addBindValue(bsec_ + sec);
+	query.exec();
+	while (query.next())
+	{
+		Episode test(query);
+		if (id_ != test.id())
+		{
+			if (test.type() == type)
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+void Episode::setType(const int newType)
+{
+	type_ = newType;
+	remove();
+	insert();
+}

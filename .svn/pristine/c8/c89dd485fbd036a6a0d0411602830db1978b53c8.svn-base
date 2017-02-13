@@ -1,0 +1,75 @@
+#ifndef MEDIAN_H
+#define MEDIAN_H
+
+#include <QtCore/QVector>
+#include <numeric>
+#include <algorithm>
+
+/*!
+	Simple median
+*/
+template<typename T>
+T median(const QVector<T> &data)
+{
+	T acc = std::accumulate<QVector<T>::const_iterator, T>(data.begin(), data.end(), 0);
+	T size = static_cast<T>(data.size());
+	return  acc/size;
+}
+
+
+template<typename Type, typename Iter>
+Type median(Iter first, Iter last, Type fake);
+
+
+/*!
+	median Hodges-Lehmann
+
+	Отбрасывает по x% от начала и от конца отсортированного массива.
+	Возвращает среднее из оставшихся значений.
+*/
+template<typename T>
+T medianHodjLehm(QVector<T> &data, int x = 10)
+{
+	qSort(data.begin(), data.end());
+	int rem_count = (data.size() * x) / 100;
+	for(int i = 0; i < rem_count; ++i)
+	{
+		data.erase(data.begin());
+		data.erase(data.end() - 1);
+	}
+	
+	return median<T>(data);
+}
+
+/*!
+	Subtract median from each element of vector
+	\return A median for vector
+*/
+template<typename T>
+T medianSubtract(QVector<T> &data, const T &fakeValue)
+{
+	int count = 0;
+	T accum = 0;
+	QVector<T>::iterator i = data.begin();
+	while (i != data.end()) {
+		if (*i != fakeValue) {
+			accum += *i;
+			++count;
+		}
+		++i;
+	}
+	
+	T m = accum / count;
+	
+	i = data.begin();
+	while (i != data.end()) {
+		if (*i != fakeValue) {
+			*i -= m;
+		}
+		++i;
+	}
+	
+	return m;
+}
+
+#endif // MEDIAN_H

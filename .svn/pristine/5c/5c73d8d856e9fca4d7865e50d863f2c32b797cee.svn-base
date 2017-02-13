@@ -1,0 +1,64 @@
+#include <QtGui/QLabel>
+#include <QtGui/QHBoxLayout>
+#include <QtGui/QVBoxLayout>
+
+#include "trends/position.h"
+#include "bodypositioncolorwnd.h"
+
+BodyPositionColorWidget::BodyPositionColorWidget(QWidget *parent)
+{
+	QHBoxLayout *colorsMainLayout = new QHBoxLayout(this);
+	QPalette colorsPalette = QLabel().palette();
+	QLabel *colorsLabel_1 = new QLabel(Pose::name(Pose::Standing));
+	colorsPalette.setColor(QPalette::Active, QPalette::Background, Pose::color(Pose::Standing));
+	colorsPalette.setColor(QPalette::Inactive, QPalette::Background, Pose::color(Pose::Standing));
+	colorsLabel_1->setPalette(colorsPalette);
+	colorsLabel_1->setAutoFillBackground(true);
+	colorsLabel_1->setMargin(2);
+	QLabel *colorsLabel_2 = new QLabel(Pose::name(Pose::Supine));
+	colorsPalette.setColor(QPalette::Active, QPalette::Background, Pose::color(Pose::Supine));
+	colorsPalette.setColor(QPalette::Inactive, QPalette::Background, Pose::color(Pose::Supine));
+	colorsLabel_2->setPalette(colorsPalette);
+	colorsLabel_2->setAutoFillBackground(true);
+	colorsLabel_2->setMargin(2);
+	QVBoxLayout *colorsLayout_1 = new QVBoxLayout();
+	colorsLayout_1->addWidget(colorsLabel_1);
+	colorsLayout_1->addWidget(colorsLabel_2);
+	colorsMainLayout->addLayout(colorsLayout_1);
+	QLabel *colorsLabel_3 = new QLabel(Pose::name(Pose::Right));
+	colorsPalette.setColor(QPalette::Active, QPalette::Background, Pose::color(Pose::Right));
+	colorsPalette.setColor(QPalette::Inactive, QPalette::Background, Pose::color(Pose::Right));
+	colorsLabel_3->setPalette(colorsPalette);
+	colorsLabel_3->setAutoFillBackground(true);
+	colorsLabel_3->setMargin(2);
+	QLabel *colorsLabel_4 = new QLabel(Pose::name(Pose::Left));
+	colorsPalette.setColor(QPalette::Active, QPalette::Background, Pose::color(Pose::Left));
+	colorsPalette.setColor(QPalette::Inactive, QPalette::Background, Pose::color(Pose::Left));
+	colorsLabel_4->setPalette(colorsPalette);
+	colorsLabel_4->setAutoFillBackground(true);
+	colorsLabel_4->setMargin(2);
+	QVBoxLayout *colorsLayout_2 = new QVBoxLayout();
+	colorsLayout_2->addWidget(colorsLabel_3);
+	colorsLayout_2->addWidget(colorsLabel_4);
+	colorsMainLayout->addLayout(colorsLayout_2);
+	QLabel *colorsLabel_5 = new QLabel(Pose::name(Pose::Prone));
+	colorsPalette.setColor(QPalette::Active, QPalette::Background, Pose::color(Pose::Prone));
+	colorsPalette.setColor(QPalette::Inactive, QPalette::Background, Pose::color(Pose::Prone));
+	colorsLabel_5->setPalette(colorsPalette);
+	colorsLabel_5->setAutoFillBackground(true);
+	colorsLabel_5->setMargin(2);
+	QLabel *colorsLabel_6 = new QLabel(Pose::name(Pose::Unknown));
+	colorsPalette.setColor(QPalette::Active, QPalette::Background, Pose::color(Pose::Unknown));
+	colorsPalette.setColor(QPalette::Inactive, QPalette::Background, Pose::color(Pose::Unknown));
+	colorsLabel_6->setPalette(colorsPalette);
+	colorsLabel_6->setAutoFillBackground(true);
+	colorsLabel_6->setMargin(2);
+	QVBoxLayout *colorsLayout_3 = new QVBoxLayout();
+	colorsLayout_3->addWidget(colorsLabel_5);
+	colorsLayout_3->addWidget(colorsLabel_6);
+	colorsMainLayout->addLayout(colorsLayout_3);
+}
+
+BodyPositionColorWidget::~BodyPositionColorWidget()
+{
+}

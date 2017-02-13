@@ -1,0 +1,44 @@
+#ifndef SPO2WND_H
+#define SPO2WND_H
+
+#include "scalewnd.h"
+#include "episodewnd.h"
+#include <QtGui/QHBoxLayout>
+
+class Spo2Wnd: public QWidget
+{
+	Q_OBJECT
+
+public:
+	Spo2Wnd(int index, QWidget *parent = 0);
+	~Spo2Wnd();
+
+signals:
+	void doUpdateView();
+	void delEp(Episode episode);
+
+public Q_SLOTS:
+	void placeEpisodes();
+	void clearEpisodes();
+	void setRange(const Scale::Unit &range);
+	void setZero(int  zero);
+	void deleteEpisode(Episode episode);
+
+protected:
+	void resizeEvent(QResizeEvent *e);
+	bool eventFilter(QObject *target, QEvent *e);
+	void onPaintView();
+
+private:
+	QHBoxLayout		*m_layout;
+	ScaleWnd		*m_range;
+	QWidget			*m_view;
+	QList<EpisodeWnd *>		m_ews;
+	int				m_upper,
+					m_lower,
+					m_zero;
+	QPixmap			m_pixmap;
+	int				m_index;
+};
+
+#endif // SPO2WND_H

@@ -1,0 +1,60 @@
+#ifndef EPISODETYPESELECTWND_H
+#define EPISODETYPESELECTWND_H
+
+#include <QtGui/QWidget>
+
+QT_FORWARD_DECLARE_CLASS(QPushButton)
+QT_FORWARD_DECLARE_CLASS(QTextEdit)
+QT_FORWARD_DECLARE_CLASS(QTextCharFormat)
+QT_FORWARD_DECLARE_CLASS(QComboBox)
+QT_FORWARD_DECLARE_CLASS(QFontComboBox)
+QT_FORWARD_DECLARE_CLASS(QListWidget)
+QT_FORWARD_DECLARE_CLASS(QListWidgetItem)
+QT_FORWARD_DECLARE_CLASS(QTextDocument)
+
+class EpisodeTypeSelectWidget : public QWidget
+{
+	Q_OBJECT
+
+public:
+	EpisodeTypeSelectWidget(int episodeType = 0, QWidget *parent = 0);
+	~EpisodeTypeSelectWidget();
+
+	QSize	minimumSizeHint() const;
+	int		titleWidth() const;
+	void	setTitleWidth(int width);
+	int		episodeTypeWidth() const;
+	void	setEpisodeTypeWidth(int width);
+
+signals:
+	void doUpdateView();
+
+private:
+	QComboBox	*comboStyle;
+	//QFontComboBox *comboFont;
+	//QComboBox
+	QListWidget	*listEpisodeShow;
+	QPixmap		m_pixmap;
+	int			m_titleWidth,
+				m_episodeTypeWidth,
+				m_distance,
+				m_episodeType;
+	bool	drag;
+	QPoint	m_prev;
+
+protected:	
+	//void	paintEvent(QPaintEvent *e);
+	//void	wheelEvent(QWheelEvent *e);
+	//void	contextMenuEvent(QContextMenuEvent *e);
+	//void	mouseMoveEvent(QMouseEvent *e);
+	//void	mousePressEvent(QMouseEvent *e);
+	//void	mouseReleaseEvent(QMouseEvent *e);
+	//void	resizeEvent(QResizeEvent *e) {};
+	void	keyPressEvent(QKeyEvent *e);
+
+protected Q_SLOTS:
+	void textStyle(int styleIndex);
+	void textStyle(QListWidgetItem * item);
+};
+
+#endif // EPISODETYPESELECTWND_H

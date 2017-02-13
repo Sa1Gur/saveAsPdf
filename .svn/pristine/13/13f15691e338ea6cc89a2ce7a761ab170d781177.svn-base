@@ -1,0 +1,49 @@
+CDRV:03,1
+Nsys:000383		;7(23)
+ADC_R:12
+AStop:F1
+R;TYPE:000001
+R;TYPE:0064	;;;;;63		;63
+R;TYPE:200
+RTYPE:64
+
+
+16384
+;;;248
+;1,2,4-R,M,rein
+;8	Astrocard FD
+;16	BPLAB
+;32	CF BRAEM
+;64	AstroMMC
+
+SynkM:1
+UNDOSNG:0		;undo if Remove Single qrs (1)
+PMSNR:20
+GRIDBLOCK:0
+GRIDMODE:1
+CASHSIZE:16384
+RETRMODE:2
+FASTDMA:1
+HDHBUS:1	;;;;;1
+CSBUS:1
+USEVXDP
+USESSE:1
+COLORUP:1
+B;LOCKW
+Debug:0
+DTQ:1
+PRINTBMP
+D;DRMODE:1280,1024,8,60
+FILEPRN:"Adobe PDF"
+BEEPMODE:1
+ASTOPTIME:100
+;Опции user, sys, sn и src не могу быть изменены пользователем!
+;User, sys, sn and src options are not available for changing by user!
+USER:
+| Институт Каpдиологии им. А.Л.Мясникова
+              $
+SYS:524287
+SN:#HS200050$
+S;NU:1
+SRC:152812
+

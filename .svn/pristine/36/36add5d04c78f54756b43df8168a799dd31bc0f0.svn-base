@@ -1,0 +1,90 @@
+#ifndef MAINWND_H
+#define MAINWND_H
+
+#include <QtGui/QMainWindow>
+#include "ui_mainwnd.h"
+#include "episode.h"
+#include "environment.h"
+#include "widgets/timewnd.h"
+
+QT_FORWARD_DECLARE_CLASS(QSplitter)
+QT_FORWARD_DECLARE_CLASS(QVBoxLayout)
+QT_FORWARD_DECLARE_CLASS(QLabel)
+
+class MainWnd: public QMainWindow
+{
+	Q_OBJECT
+
+public:
+	MainWnd(QWidget *parent = 0, Qt::WFlags flags = 0);
+	~MainWnd();
+
+signals:
+	void preUpdateView();
+	void postUpdateView();
+	void scale4Change(int);
+
+public Q_SLOTS:
+	void compressView();
+	void expandView();
+	void compressTrend();
+	void expandTrend();
+	void settingsDlg();
+	void episodesDlg();
+	void markBasicEvents();
+	void callHolter();
+	void callDatabase();
+	void callReader();
+	void appClose();
+	void turnMarkMode();
+	void reportDlg();
+	void aboutDlg();
+	void updateView();
+	void deleteEpisode(Episode episode);
+	void trendingDlg();
+	void conclusionDlg();
+	void colorsDlg();
+	void templatesDlg();
+	void channelsDlg();
+	void printTrends();
+	void printScreen();
+	void applicationData();
+
+	void scrollBar_setValue(int);
+	void scrollBar_updateValue();
+
+protected:
+	void closeEvent(QCloseEvent *e);
+	void keyPressEvent(QKeyEvent *e);
+	void wheelEvent(QWheelEvent *e);
+	bool winEvent(MSG * message, long * result);
+
+	void writeSettings();
+	void readSettings();
+
+	Ui::MainWndClass		ui;
+	QWidgetList				dataWnd;
+	QVector<MsPerScreen>	scales;
+	QVector<MsPerScreen>::const_iterator currentScale;
+	TimeWnd					*timeWnd;
+	QWidget					*trendWnd;
+	QSplitter				*splitter;
+	QVBoxLayout				*mainLayout;
+	QScrollBar				*scrollBar;
+
+#ifdef _DEBUG
+	QLabel *currentSecond,
+			*currentSample;
+	QComboBox *dbgComboBox;
+#endif
+
+	QLabel *spo2Value;
+	QLabel *pulseValue;
+	QLabel *respValue;
+	QLabel *modeIcon;
+	QLabel *modeText;
+	QLabel *startValue;
+	QLabel *screenValue;
+};
+
+#endif // MAINWND_H

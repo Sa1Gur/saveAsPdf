@@ -1,0 +1,9 @@
+#ifndef FILTERS_H
+#define FILTERS_H
+
+#include <QtCore/QVector>
+
+/*! Фильтрация методом скользящего среднего */
+void slidingAvg(QVector<float> &data, int n, float ignore = 0x7fff);
+
+#endif // FILTERS_H

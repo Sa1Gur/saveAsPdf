@@ -1,0 +1,197 @@
+#include "episodes.h"
+#include "main/environment.h"
+#include "main/episode.h"
+#include "misc/text_utils.h"
+
+#include <QtGui/QPrintDialog>
+#include <QtGui/QPainter>
+#include <QtCore/QFile>
+#include <QtCore/QTextStream>
+#include <QtGui/QResizeEvent>
+#include <QtGui/QMessageBox>
+
+EpisodesDlg::EpisodesDlg(QWidget *parent)
+: QDialog(parent)
+{
+	setupUi(this);
+	radioButton1->setChecked(true);
+	tableModel = new QSqlRelationalTableModel(this);
+	tableModel->setTable("episodes");
+	tableModel->setRelation(Episode::Type, QSqlRelation("types", "id", "title"));
+	tableModel->select();
+	tableModel->setHeaderData(Episode::BegSec, Qt::Horizontal, tr("Начало"));
+	tableModel->setHeaderData(Episode::EndSec, Qt::Horizontal, tr("Окончание"));
+	tableModel->setHeaderData(Episode::Type, Qt::Horizontal, tr("Тип"));
+	tableModel->setHeaderData(Episode::BegVal, Qt::Horizontal, tr("Начальное значение"));
+	tableModel->setHeaderData(Episode::EndVal, Qt::Horizontal, tr("Конечное значение"));
+	tableView1->setModel(tableModel);
+	tableView1->resizeColumnsToContents();
+	tableView1->setColumnHidden(Episode::Id, true);
+	tableView1->setSelectionMode(QAbstractItemView::SingleSelection);
+	tableView1->setSelectionBehavior(QAbstractItemView::SelectRows);
+	tableView1->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	tableView1->setItemDelegate(new EpisodeDelegate);
+	QHeaderView *header = tableView1->horizontalHeader();
+	header->setStretchLastSection(true);
+	printer = new QPrinter();
+}
+
+EpisodesDlg::~EpisodesDlg()
+{
+	delete printer;
+}
+
+void EpisodesDlg::resizeEvent(QResizeEvent *e)
+{
+	verticalLayoutWidget->resize(e->size());
+}
+
+void EpisodesDlg::onClickedRadioButton1()
+{
+	tableModel->setFilter("");
+	tableModel->select();
+}
+
+void EpisodesDlg::onClickedRadioButton2()
+{
+	tableModel->setFilter(QString("type = %1").arg(Episode::Wake));
+	tableModel->select();
+}
+
+void EpisodesDlg::onClickedRadioButton3()
+{
+	tableModel->setFilter(QString("type = %1").arg(Episode::Dream));
+	tableModel->select();
+}
+
+void EpisodesDlg::onClickedRadioButton4()
+{
+	tableModel->setFilter(QString("type = %1").arg(Episode::Artefacts));
+	tableModel->select();
+}
+
+void EpisodesDlg::onClickedRadioButton5()
+{
+	tableModel->setFilter(QString("type = %1").arg(Episode::Desaturation));
+	tableModel->select();
+}
+
+void EpisodesDlg::onClickedRadioButton6()
+{
+	tableModel->setFilter(QString("type = %1").arg(Episode::Hypopnea));
+	tableModel->select();
+}
+
+void EpisodesDlg::onClickedRadioButton7()
+{
+	tableModel->setFilter(QString("type = %1").arg(Episode::ObstrApnea));
+	tableModel->select();
+}
+
+void EpisodesDlg::print()
+{
+	QFile tmpl(":/templates/episodes.html");
+	tmpl.open(QIODevice::ReadOnly);
+	QTextStream in(&tmpl);
+	QString html = in.readAll();
+
+	EnvironmentPtr pEnv;
+
+	QString episode_list;
+	for (int i = 0; i < tableModel->rowCount(); ++i)
+	{
+		quint32 bsec = tableModel->index(i, Episode::BegSec).data().toInt();
+		quint32 esec = tableModel->index(i, Episode::EndSec).data().toInt();
+		QString type = tableModel->index(i, Episode::Type).data().toString();
+		double  bval = tableModel->index(i, Episode::BegVal).data().toDouble();
+		double  eval = tableModel->index(i, Episode::EndVal).data().toDouble();
+
+		episode_list += QString(
+			"<tr bgcolor=\"white\">"
+			"<td align=\"center\">%1</td>"
+			"<td align=\"center\">%2</td>"
+			"<td align=\"center\">%3</td>"
+			"<td align=\"center\">%4</td>"
+			"<td align=\"center\">%5</td>"
+			"</tr>\r\n"
+			)
+			.arg( pEnv->sample2NativTime(pEnv->sec2sample(bsec)).time().toString() )
+			.arg( pEnv->sample2NativTime(pEnv->sec2sample(esec)).time().toString() )
+			.arg( type )
+			.arg( QString("%1").arg(bval, 3) )
+			.arg( QString("%1").arg(eval, 3) );
+	}
+
+	html.replace("%{episodes}", episode_list);
+
+	QTextDocument doc;
+	doc.setHtml(html);
+
+	find_replace(&doc, "%{name}", pEnv->patientName());
+	find_replace(&doc, "%{sex}", pEnv->patientSex());
+	find_replace(&doc, "%{idate}", pEnv->inspectionDate().toString("dd.MM.yyyy"));
+	find_replace(&doc, "%{age}", tr("%1 лет").arg(pEnv->patientAge()));
+	find_replace(&doc, "%{height}", tr("%1 см").arg(pEnv->patientHeight()));
+	find_replace(&doc, "%{weight}", tr("%1 кг").arg(pEnv->patientWeight()));
+	find_replace(&doc, "%{adate}", pEnv->analysisDate().toString("dd.MM.yyyy"));
+	find_replace(&doc, "%{addr}", pEnv->patientAddress());
+	find_replace(&doc, "%{phone}", pEnv->patientPhone());
+	find_replace(&doc, "%{purpose}", pEnv->patientPurpose());
+	find_replace(&doc, "%{unit}", pEnv->patientUnit());
+	find_replace(&doc, "%{chamber}", pEnv->patientChamber());
+	find_replace(&doc, "%{doctor}", pEnv->patientDoctor());
+
+	QPrintDialog dlg(printer, this);
+	if (dlg.exec())
+	{
+		doc.print(printer);
+	}
+}
+
+void EpisodesDlg::remove()
+{
+	tableView1->setFocus();
+	QModelIndex index = tableView1->currentIndex();
+	if (!index.isValid())
+	{
+		return;
+	}
+
+	if (QMessageBox::question(this, tr("Таблица событий"), tr("Удалить выделенный эпизод?"), QMessageBox::Ok | QMessageBox::Cancel) == QMessageBox::Ok)
+	{
+		tableModel->removeRow(index.row());
+		emit episodeRemoved();
+	}
+}
+
+void EpisodesDlg::onClickedTableView1(const QModelIndex &index)
+{
+	quint32 bsec = tableModel->index(index.row(), Episode::BegSec).data().toInt();
+
+	EnvironmentPtr pEnv;
+	pEnv->setCurrentSample(pEnv->sec2sample(bsec));
+
+	emit positionChanged();
+}
+
+EpisodeDelegate::EpisodeDelegate(QObject *parent)
+: QItemDelegate(parent)
+{
+}
+
+void EpisodeDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const
+{
+	if (index.column() == Episode::BegSec || index.column() == Episode::EndSec)
+	{
+		EnvironmentPtr pEnv;
+		int sec = index.data().toInt();
+		quint32 sample = pEnv->sec2sample(sec);
+		QString text( pEnv->sample2NativTime(sample).time().toString() );
+		drawDisplay(painter, option, option.rect, text);
+		drawFocus(painter, option, option.rect);
+	}
+	else
+	{
+		QItemDelegate::paint(painter, option, index);
+	}
+}

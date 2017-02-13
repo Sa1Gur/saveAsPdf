@@ -1,0 +1,198 @@
+#include "scalewnd.h"
+
+#include <QtGui/QStylePainter>
+#include <QtGui/QWheelEvent>
+#include <QtGui/qmenu.h>
+
+ScaleWnd::ScaleWnd(int index, const Scale::UnitList &units,
+				   int startIndex, Type type, int m_distance_, QWidget *parent)
+:	QWidget(parent),
+	m_titleWidth(20),
+	m_scaleWidth(50),
+	m_distance(m_distance_)
+{
+	switch (type)
+	{
+	case Ranged:
+		m_scale = new Range(units);
+		break;
+
+	case Zooming:
+		m_scale = new Zoom(units);
+		break;
+
+	case RangedZooming:
+		m_scale = new RangedZoom(units);
+		break;
+
+	case Standard:
+	default:
+		m_scale = new Scale(units);
+		break;
+	}
+
+	m_scale->setCurrentIndex(startIndex);
+
+	EnvironmentPtr pEnv;
+	setWindowTitle(pEnv->channelTitle(index));
+	m_scale->setFactor(pEnv->load(index, 0, RawData(1)));
+
+	setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+	setFocusPolicy(Qt::StrongFocus);
+
+	setContextMenuPolicy(Qt::DefaultContextMenu);
+}
+
+ScaleWnd::~ScaleWnd()
+{
+}
+
+QSize ScaleWnd::minimumSizeHint() const
+{
+	return QSize(100, 80);
+}
+
+int ScaleWnd::titleWidth() const
+{
+	return m_titleWidth;
+}
+
+void ScaleWnd::setTitleWidth(int width)
+{
+	m_titleWidth = width;
+	update();
+}
+
+int ScaleWnd::scaleWidth() const
+{
+	return m_scaleWidth;
+}
+
+void ScaleWnd::setScaleWidth(int width)
+{
+	m_scaleWidth = width;
+	update();
+}
+
+void ScaleWnd::paintEvent(QPaintEvent *e)
+{
+	m_pixmap = QPixmap(size());
+	m_pixmap.fill(this, 0, 0);
+	QPainter painter(&m_pixmap);
+	painter.initFrom(this);
+
+	painter.setPen(palette().color(QPalette::Active, QPalette::WindowText));
+
+	m_scale->paint(&painter, QRect(rect().right() - scaleWidth(), rect().top(),	scaleWidth(), rect().height()), m_distance);
+
+	QRect trc;
+	trc.setCoords(rect().top() - rect().height() / 2,	rect().left(), rect().bottom() - rect().height() / 2, rect().left() + titleWidth());
+	painter.translate(0, rect().height() / 2);
+	painter.rotate(-90.0);
+	painter.drawText(trc, Qt::AlignCenter, windowTitle());
+	painter.rotate(90.0);
+	painter.translate(0, -rect().height() / 2);
+	
+	QRect trc1;
+	trc1.setCoords(rect().top() - rect().height() / 2,	rect().left() + titleWidth(), rect().bottom() - rect().height() / 2, rect().left() +  2 * titleWidth());
+	painter.translate(0, rect().height() / 2 - m_distance);
+	painter.rotate(-90.0);
+	painter.drawText(trc1, Qt::AlignCenter, "<	-	|	-	>");
+	painter.rotate(90.0);
+	painter.translate(0, -rect().height() / 2 + m_distance);
+
+	painter.setPen(palette().color(QPalette::Active, QPalette::Dark));
+
+	painter.drawLine(rect().topLeft(),					rect().bottomLeft());
+	painter.drawLine(rect().topRight(),					rect().bottomRight());
+	painter.drawLine(rect().topLeft(),					rect().topRight());
+	painter.drawLine(rect().bottomLeft() - QPoint(0,1),	rect().bottomRight() - QPoint(0,1));
+	painter.drawLine(titleWidth(),						1, titleWidth(), rect().bottom() - 2);
+	painter.drawLine(rect().right() - scaleWidth(),		1, rect().right() - scaleWidth(),		rect().bottom() - 2);
+
+	painter.setPen(palette().color(QPalette::Active,	QPalette::Light) );
+	painter.drawLine(rect().bottomLeft(),				rect().bottomRight());
+	painter.drawLine(titleWidth() + 1,					1, titleWidth() + 1,					rect().bottom() - 2);
+	painter.drawLine(rect().right() - scaleWidth() - 1, 1, rect().right() - scaleWidth() - 1,	rect().bottom() - 2);
+
+	painter.setPen(Qt::NoPen);
+	
+	QStylePainter stylePainter(this);
+	stylePainter.drawPixmap(0, 0, m_pixmap);
+}
+
+void ScaleWnd::wheelEvent(QWheelEvent *e)
+{
+	if (e->delta() > 0)
+	{
+		m_scale->zoomIn();
+	}
+	else if (e->delta() < 0)
+	{
+		m_scale->zoomOut();
+	}
+
+	update();
+	emit scaleChanged(m_scale->current());
+}
+
+void ScaleWnd::contextMenuEvent(QContextMenuEvent *e)
+{
+	 QMenu *menu = new QMenu;
+	 QString t("Вернуть изолинию в ноль нажмите 0");
+	 menu->addAction(t);//, m_scale, zeroChanged);
+	 //connect(m_scale,	SIGNAL(zeroChanged(int)),			this, SLOT(setZero(int)));
+	 menu->exec(e->globalPos());
+}
+
+void ScaleWnd::mouseMoveEvent(QMouseEvent *e)
+{
+	if (((e->buttons() & Qt::LeftButton)) && drag)
+	{
+		m_distance		-= e->globalPos().y() - m_prev.y();
+		m_prev			= e->globalPos();
+
+		update();
+		emit zeroChanged(m_distance);
+	}
+}
+
+void ScaleWnd::mousePressEvent(QMouseEvent *e)
+{
+	drag		= true;
+	m_prev		= e->globalPos();
+	//m_distance	= 0;
+}
+
+void ScaleWnd::mouseReleaseEvent(QMouseEvent *e)
+{	
+	drag = false;
+	update();
+	emit zeroChanged(m_distance);
+}
+
+void ScaleWnd::resizeEvent(QResizeEvent *e)
+{
+	int newHeight = e->size().height();
+	int newWidth = e->size().width();
+	/*m_sbRight.setCoords(newWidth - 10, newHeight/2 - 15, newWidth, newHeight/2 + 15);
+	m_sbLeft.setCoords(0, newHeight/2 - 15,	10, newHeight/2 + 15);
+	m_delButton->move(newWidth - m_delButton->width(), 0);*/
+}
+
+void ScaleWnd::keyPressEvent(QKeyEvent *e)
+{
+	switch (e->key())
+	{
+	case Qt::Key_0:
+		drag = false;
+		m_distance = 0;
+		update();
+		emit zeroChanged(m_distance);
+		//delEpisode();
+		break;
+	default:
+		QWidget::keyPressEvent(e);
+		break;
+	}
+}

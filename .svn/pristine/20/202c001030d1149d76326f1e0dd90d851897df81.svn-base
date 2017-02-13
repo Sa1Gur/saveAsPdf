@@ -1,0 +1,43 @@
+#pragma once
+
+#include <QtCore/QDataStream>
+#include <QtGui/QSplashScreen>
+#include "trend.h"
+#include "main/environment.h"
+
+struct Pose
+{
+	float x, y, z;
+	
+	Pose();
+	Pose(const RawData &px, const RawData &py, const RawData &pz);
+	QColor color() const;
+	int type() const;
+
+	enum {
+		Standing, Supine, Right, Left, Prone, Unknown, MaxPose
+	};
+	
+	static RawData::value_type zero; // уровень нуля
+	static RawData::value_type oneG; // соотв. 1 g
+
+	static QColor color(int type);
+	static QString name(int type);
+};
+
+QDataStream &operator<<(QDataStream &out, const Pose &pose);
+QDataStream &operator>>(QDataStream &in, Pose &pose);
+
+
+
+class Position: public Trend
+{
+public:
+	Position(const QString &title, const QColor &color, QSplashScreen *splash);
+	~Position();
+
+	static const QString posFilename_;
+
+	void draw(QPainter *painter, const QRect &rect, int start, int stop) const;
+	void drawScale(QPainter *painter, const QRect &rect, const QRect &ext = QRect()) const;
+};

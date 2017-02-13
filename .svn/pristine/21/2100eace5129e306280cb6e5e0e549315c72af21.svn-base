@@ -1,0 +1,253 @@
+#ifndef MINMAX_H
+#define MINMAX_H
+
+/*!
+	Pick minimum from numbers excluding fake
+*/
+template <typename T>
+//class MinHelper
+//{
+//public:
+	
+	const T qMinNoFake (const T &a, const T &b, const T &fake) {
+		if (a == fake)
+		{
+			if (b == fake)
+			{
+				return fake;
+			}
+			else
+			{
+				return b;
+			}
+		}
+		else
+		{
+			if (b == fake)
+			{
+				return a;
+			}
+			else
+			{
+				return qMin(a, b);
+			}
+		}
+	}
+
+//public:
+//	bool n;
+//};
+
+/*!
+	Класс-помощник при сортировке объектов по разным критериям
+*/
+template <typename T>
+class SortHelper
+{
+public:
+	SortHelper()
+		: m_minVal(0), m_maxVal(0), first(true)
+	{}
+	
+	void operator() (const T &val) {
+		if (first)
+		{
+			first = false;
+			m_minVal = m_maxVal = val;
+		}
+		else
+		{
+			if (m_minVal > val)
+			{
+				m_minVal = val;
+			}
+			else if (m_maxVal < val)
+			{
+				m_maxVal = val;
+			}
+		}
+	}
+
+	inline const T &minVal() const {
+		return m_minVal;
+	}
+
+	inline const T &maxVal() const {
+		return m_maxVal;
+	}
+
+private:
+	T		m_minVal;
+	T		m_maxVal;
+	bool	first;
+};
+
+enum {
+	MinMaxBufLen = 10240
+};
+
+template <typename T>
+void findMinMax(const QVector<T> &data, int *pMaxpos, int *pMinpos, int &p, int &q)
+{
+	static int max[MinMaxBufLen];
+	static int min[MinMaxBufLen];
+
+	bool	sfmin = false,
+			sfmax = false;	
+	
+	for(int i = 0; i < (data.size() - 1); i++)
+	{
+		if ((int)data[i] < (int)data[i + 1])
+		{
+			if (sfmin == true)
+			{
+				min[q] = (int)data[i];
+				pMinpos[q]=i;
+				q++;
+			}
+			sfmax = true;
+			sfmin = false;
+		}
+		else if ((int)data[i] > (int)data[i + 1])
+		{
+			if (sfmax == true)
+			{
+				max[p] = (int)data[i];
+				pMaxpos[p] = i;
+				p++;
+			}			
+			sfmin = true;
+			sfmax = false;
+		}
+	}
+	
+	for(int i = 0; i < q - 1; i++)
+	{
+		if ((pMinpos[i + 1] - pMinpos[i]) < 100)
+		{
+			if (min[i + 1] > min[i])
+			{
+				for (int j = i + 1; j < q - 1; j++)
+				{
+					min[j]		= min[j + 1];
+					pMinpos[j]	= pMinpos[j + 1];
+				}
+			}
+			else
+			{
+				for (int j = i; j < q - 1; j++)
+				{
+					min[j]		= min[j + 1];
+					pMinpos[j]	= pMinpos[j + 1];
+				}
+			}
+			q--;
+			i--;
+		}
+	}
+
+	for(int i = 0; i < p - 1; i++)
+	{
+		if ((pMaxpos[i + 1] - pMaxpos[i]) < 100)
+		{ // max 240 pulses per minute
+			if (max[i + 1] < max[i])
+			{
+				for (int j = i + 1; j < p - 1; j++)
+				{
+					max[j]		= max[j + 1];
+					pMaxpos[j]	= pMaxpos[j + 1];
+				}
+			}
+			else
+			{
+				for (int j = i; j < p - 1; j++)
+				{
+					max[j]		= max[j + 1];
+					pMaxpos[j]	= pMaxpos[j + 1];
+				}
+			}
+			p--;
+			i--;
+		}
+	}
+
+	// check result by following order: min - max - min
+	for(int i = 0; i < q - 1; i++)
+	{
+		int j;
+		for (j = 0; j < p; j++)
+		{
+			if ((pMinpos[i] < pMaxpos[j]) && (pMaxpos[j] < pMinpos[i + 1]))
+			{
+				break;
+			}
+		}
+
+		if (j == p)
+		{
+			if (min[i] >= min[i + 1])
+			{
+				for (j = i; j < q - 1; j++)
+				{
+					min[j]		= min[j + 1];
+					pMinpos[j]	= pMinpos[j + 1];
+				}
+			}
+			else
+			{
+				min[i + 1]		= min[i];
+				pMinpos[i + 1]	= pMinpos[i];
+				for (j = i; j < q - 1; j++)
+				{
+					min[j]		= min[j + 1];
+					pMinpos[j]	= pMinpos[j + 1];
+				}
+			}
+			q--;
+			i--;
+		}
+	}
+
+	// check result by following order: max - min - max
+	for(int i = 0; i < p - 1; i++)
+	{
+		int j;
+		for (j = 0; j < q; j++)
+		{
+			if ((pMaxpos[i] < pMinpos[j]) && (pMinpos[j] < pMaxpos[i + 1]))
+			{
+				break;
+			}
+		}
+		if (j == q)
+		{
+			if (max[i] <= max[i + 1])
+			{
+				for (j = i; j < p - 1; j++)
+				{
+					max[j]		= max[j+1];
+					pMaxpos[j]	= pMaxpos[j+1];
+				}
+			}
+			else
+			{
+				max[i + 1]		= max[i];
+				pMaxpos[i + 1]	= pMaxpos[i];
+				for (j = i; j < p - 1; j++)
+				{
+					max[j]		= max[j + 1];
+					pMaxpos[j]	= pMaxpos[j + 1];
+				}
+			}
+			p--;
+			i--;
+		}
+	}
+
+	if (pMaxpos[p - 1] < pMinpos[q - 1])//Checking, that ends at max value (because wave goes max - min - max, and we need to have the whole wave)
+	{
+		q--;
+	}
+}
+
+#endif // MINMAX_H

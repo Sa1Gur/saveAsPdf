@@ -1,0 +1,27 @@
+#ifndef TIMEWND_H
+#define TIMEWND_H
+
+#include <QtGui/QWidget>
+
+class TimeWnd: public QWidget
+{
+	Q_OBJECT
+
+public:
+	TimeWnd(QWidget *parent = 0);
+
+	QSize minimumSizeHint() const;
+	QSize sizeHint() const;
+
+protected:
+	void paintEvent(QPaintEvent *event);
+
+	enum {
+		PanelWidth = 100
+	};
+
+private:
+	QPixmap pixmap;
+};
+
+#endif // TIMEWND_H

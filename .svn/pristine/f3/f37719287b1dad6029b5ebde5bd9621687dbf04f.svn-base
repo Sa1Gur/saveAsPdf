@@ -1,0 +1,56 @@
+#include "customprintpreviewdialog.h"
+#include "misc/muldiv.h"
+
+#include <QtGui/QIcon>
+#include <QtGui/QApplication>
+#include <QtGui/QPrinter>
+#include <QtGui/QToolBar>
+#include <QtGui/QDesktopWidget>
+#include <QtGui/QFileDialog>
+
+CustomPrintPreviewDialog::CustomPrintPreviewDialog(QPrinter *printer, QWidget *parent)
+	: QPrintPreviewDialog(printer, parent)
+{
+	QList<QToolBar *> toolbarlist = findChildren<QToolBar *>();
+	if (!toolbarlist.isEmpty())
+	{
+		//disable
+		//toolbarlist.first()->actions().at(3)->setDisabled(true);
+		//or to remove:
+		//toolbarlist.first()->removeAction(toolbarlist.first()->actions().at(3));
+		
+		//alternatively you can add actions to the toolbar:
+		toolbarlist.first()->addAction(QIcon(":/MainWnd/filesaveas.png"), tr("Save as"));
+		connect((QWidget *)toolbarlist.first()->actions().last(), SIGNAL(triggered()), this, SLOT(saveas()));
+	}
+
+	QRect				rc(QApplication::desktop()->screenGeometry());
+	setGeometry(muldiv(rc.width(), 1, 10), muldiv(rc.height(), 1, 10), muldiv(rc.width(), 8, 10), muldiv(rc.height(), 8, 10));
+	connect(this, SIGNAL(paintRequested(QPrinter *)),	parent, SLOT(paint(QPrinter *)));
+}
+
+CustomPrintPreviewDialog::~CustomPrintPreviewDialog()
+{
+	//delete m_printer;
+}
+
+void CustomPrintPreviewDialog::saveas()
+{
+	showMinimized();
+	QString fn = QFileDialog::getSaveFileName(this, tr("Сохранить PDF как..."), ".\\PDF", tr("Файлы PDF (*.pdf)"));
+	if (!fn.isEmpty())
+	{
+		if (!fn.endsWith(".pdf", Qt::CaseInsensitive))
+		{
+			fn += ".pdf";
+		}
+
+		QPrinter printerPDF;// (QPrinter::HighResolution);
+		printerPDF.setOutputFormat(QPrinter::PdfFormat);
+		printerPDF.setOutputFileName(fn);
+		emit paintRequested(&printerPDF);
+	}
+
+	//setWindowFlags(Qt::WindowStaysOnTopHint);
+	showNormal();
+}

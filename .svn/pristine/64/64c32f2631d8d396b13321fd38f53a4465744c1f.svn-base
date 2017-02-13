@@ -1,0 +1,1598 @@
+#include "environment.h"
+
+#undef UNICODE
+#include <windows.h>
+#include <stdio.h>
+
+#define	HOLTERPROJECT
+#define	EXPORT_FILTRED		//FOR EXUNPACK
+#define	SUPPORT_SOUND_EVENT
+#define	USE_APNEA_TRENDS
+#define	COUNT_DAY_NIGHT_TABSTRINGS
+#define	ColorHR	RGB(255,255,0)		//used by trndwin.cpp
+
+#if defined(USE_APNEA_TRENDS)
+#define	TrndBuffSamples	86400
+#endif
+#define	MC_CMPFILTERDQRS
+#define	LoadQRSmt_LOAD_FROM_SAMPLE_SUPPORT	//for loadqrsd
+#define	LEASTQRSSAMPLE	32					// for qrsdetec.cpp
+#define	USE_PWAVEDEFINITION
+#define	USE_CMPQRS_CPP
+#define	SAMPLE	DWORD
+#define	BplabSupport
+#define	USEPOSTREND
+#define	USE_SINUSHR_RR_TRENDS
+#define	SUPPORT_SMOOTHED_TREND
+#define	USE_RESPDATA
+#define	USE_ExTrnRoutes
+#define	USE_RESPBYQRS
+#define	HtxtClipSupport
+#if defined(SHELL)
+#define	RegPathDef	TEXT("Software\\Meditek Astrocard\\AstroShell");
+#else
+//HOLTER
+#define	RegPathDef	TEXT("Software\\Meditek Astrocard\\HOLTER");
+
+#endif
+
+
+#define	USE_CLIPBOARDLAN
+#define	DefaultClipLang	LANG_RUSSIAN
+
+#define	MaxInClip	16384
+#define	SUPPORT_ALTTRENDSOUT
+
+#define	SupportSPMTable
+#define	SupportADTable
+
+#define	PIDLVER 3
+#define	STRICT_LOAD_V_INF
+#define	PIQMVER	2
+#define	STRICT_GETQRSPARAM
+#define	NSoutPoint	4094	//for SoutU routine
+
+#define	USE_ATRIUMRATE_TREND
+
+#if defined(_DEBUG)
+#define	FLASH_READ_SUPPORT
+#define	USE_DEFAULT_REG_REG_PARAM	//USE default recoder param (by reading FlashStatus from disk) if FLASH recoder FlashStatus not found
+#endif
+
+#if defined (DemoMode)
+#else
+#define WorkMode		1
+#endif
+
+#if defined(PMtrViever)
+#else
+#define FullViever		1
+#endif
+
+#if defined(UNICODE)
+#define			xsprintf	swprintf
+#define			wstrlen		wcslen
+#else
+#define			xsprintf	sprintf
+#define			wstrlen		strlen
+#endif
+
+//****FOR Holter projects
+#define			SAMPLE		DWORD		//
+
+//redefine	nonRCMaxDiff to lower value as it use filtered template
+#define	nonRCMaxDiff	40.0	//40.0	//uV
+
+//Use Htxt control
+#define			USE_HTXTCONTROL
+
+//QRS Seacher
+
+#if defined(_DEBUG)
+//#define			SampleLoadStep	4096
+#define		SampleLoadStep	4000
+#endif
+
+#if !defined(SampleLoadStep)
+#define		SampleLoadStep	16384
+#endif
+#define		qrs_detec_res_val	-32768	//-2500	//-65536.0
+
+
+//#define			MaxFilterBuffSize	(SampleLoadStep*16)
+#define			USE_SNRCALC
+#define			USE_CHECKBASELINE
+
+#define	MaxSeachForward				230				//ms
+#define	MaxSeachBack				230				//ms
+
+
+//QRS Limit detector
+#define	USE_NAVERQRSCORR
+
+//#define	USE_PSMSUPRESS
+
+#define	USE_TOOLTIPS
+
+#define	MessageFile	"vh32msgx.h"
+
+#define	InvalidSecondValue	(DWORD)0xffffffff
+
+//************MTWA
+
+#if !defined(Viewer16)
+#define	DefaultMTWAChanMask	(1|2|4|4096)
+#endif
+
+//************HRV
+#define	SCTPROC
+
+extern	HINSTANCE	hInst;
+#define	AppInstance	hInst
+
+//#include	"hltstyle.h"
+
+//PRINTINGS
+#define	USE_PRNBITMAP
+#define	USE_PRINTPREVIEW
+#define	USE_EXTTEXTS
+#define	MaxBitmapSize	6000000
+
+#define	x_prn_resolution	v_prn_resolution
+#define	y_prn_resolution	v_prn_resolution
+extern	DWORD	v_prn_resolution;
+
+//PROGRESS.CPP
+#define	IDD_DIALOGPROGRESS	IDD_DIALOG10
+
+//HRT
+#define	USE_HRTRRLIST
+
+#define	hwndSYS	hwndSys
+extern "C"	HWND	hwndSys;
+
+#define	USE_Msimg32			// support for TransparentBlt etc.
+#define	helpfile	TEXT("hlphlt.chm")
+
+#if defined(Special)
+#define	DefaultCalFD	93	//!!! to Tilman
+#else
+#define	DefaultCalFD	165
+#endif
+#define	hInstanceX	hInst
+
+#define	ExtroResSaver
+
+#define	USE_ExTemplate
+#if defined(USE_ExTemplate)
+#define	QRSinTemplte	16
+#endif
+
+#define	N_extroTemplate		16	//64
+//#define	N_MaxTemplate		(257+N_extroTemplate)
+#define	N_MaxTemplate		(256+N_extroTemplate)
+
+#define	SAMPLE64	DWORDLONG	//__int64
+
+//#include "prjconf.h"
+//####BP adjustings
+//#define	BPUNIT	AdResults
+#define		USE_BPNONINV
+//####ST adjustings
+#define	USE_STTRENDS
+#define USE_STTRENDS_ANALYSED
+#define	SecPerTrendST	15
+#define	STBUFFSIZE		((3600*48*2)/SecPerTrendST)			//
+#define	InvalidSTvalue	-32768								//-32768
+//##############################Checks for trend loader##############################
+#define	MaxTrendType						32
+#define	CheckECGSupport(lpobj)				(lpobj->TheRec.n_chanel!=0)
+#define	CheckBPNonInvasivSupport(lpobj)		(lpobj->TheRec.AdPresent)
+#define	CheckTempSupport(lpobj)				(FALSE)
+
+#define	CheckRespirationSupport(lpobj)		(FALSE)
+#define	CheckRespirationRFSupport(lpobj)	(FALSE)
+#define	CheckRespirationCo2Support(lpobj)	(FALSE)
+
+#define	CheckSPO2Support(lpobj)				(FALSE)
+#define	CheckSPO2SupportValue(lpobj)		(FALSE)
+#define	CheckPFSupportValue(lpobj)			(FALSE)
+#define TrendUnitPointer(lpobj)				((LPUnitData)(NULL))
+//#define	NumXXX_desc(lpobj,ndesc)			(NULL)
+//#define	PredefinedTrendTypes(lpobj,ndesc)	(NULL)
+#define SupportedTypes(lpobj,ndesc)			(lpobj->SupportedTypes[ndesc])
+#define	N_ST_TRN_Chan(lpobj)				(lpobj->TheRec.n_chanel)
+#define	NumXXX_desc(lpobj,ndesc)			(lpobj->NumXXX_desc[ndesc])
+#define	MaxDataDesc	8
+
+//###################################################################################
+
+//#if defined(_DEBUG)
+#define	USE_FA_DEFINITION
+//#endif
+#define	InvalidSampleValue	-1
+
+#define	AppRecordObject		GlobalRecordObject		//PipeDescriptor
+#define	LPAppRecordObject	LPGlobalRecordObject	//LPPipeDescriptor
+#include "hltknlib.h"
+//#include "afiles.h"
+#include "aplaycnt.h"
+#define	timefile	"Timeconv.h"
+#if !defined(_LIB)
+
+#define	EXmSecond2Sample(msec)		mSecond2Sample(&cRecordObject,msec)
+#define	EXGetNextQRS(MaxSample)		GetNextQRS(&cRecordObject,MaxSample)
+
+#define	EXLoadQrsInform(lpqrs)		LoadQrsInform(&cRecordObject,lpqrs)
+#define	QRSINFORM	QRSinf
+#define	LPQRSINFORM	LPQRSinf
+
+#define	n_nes_qrs_prj	cRecordObject.n_nes_qrs_aro
+#endif
+
+//#define	TESTING
+//#undef	USE_CHECKBASELINE
+
+#define	RF_SCALE_LIST_SELECTOR	GetHolterRFSelector
+LPVOID	GetHolterRFSelector(LPVOID);
+
+//#if defined(_DEBUG)
+#define	BplabCombiSupport		//Support For BPLAB ECG+BP Recoder
+//#endif
+
+#include "errsupp.h"
+//#include "screen.h"
+//#include "ssesppt.h"
+#include "syslist.h"
+#include "stest.h"
+extern	HINSTANCE hInst;
+extern	"C" void outDigit (DWORD value);
+extern		int CharToInerger(LPSTR lp,int MaxN);
+LPBYTE	SeachForString(LPBYTE start,LPBYTE end,LPSTR string,int size);
+int CountSRC(LPBYTE frombyte,int N);
+extern char	Hospital[];
+extern char	SerialNumber[];
+int adc_res=2;
+
+//#pragma comment(lib, "lib\\somno.lib")
+
+TCHAR Lead0_short[]		= "  - ";
+TCHAR Lead1_short[]		= "  1 ";
+TCHAR Lead2_short[]		= "  2 ";
+TCHAR Lead3_short[]		= "  3 ";
+TCHAR Lead4_short[]		= "  V1";
+TCHAR Lead5_short[]		= "  V2";
+TCHAR Lead6_short[]		= "  V3";
+TCHAR Lead7_short[]		= "  V4";
+TCHAR Lead8_short[]		= "  V5";
+TCHAR Lead9_short[]		= "  V6";
+TCHAR Lead10_short[]	= "   X";
+TCHAR Lead11_short[]	= "   Y";
+TCHAR Lead12_short[]	= "   Z";
+TCHAR Lead13_short[]	= "Стм.";
+TCHAR TextCodeUnknown[]				= "ошибка измер.";
+TCHAR TextCodeRemUser[]				= "удалено польз.";
+TCHAR TextCodeN_Ok_PrbTooSmall[]	= "Недостаточно данных";	
+TCHAR TextCodeSysNoReached[]		= "Не обн. сист.";	
+TCHAR TextCodeDiasNoReached[]		= "Не обн. диаст.";
+TCHAR TextCodePulsNotFound[]		= "Не обн. пульс.";	
+TCHAR TextCodePnevmaticShort[]		= "Пережата манжета";	
+TCHAR TextCodePnevmaticOpen[]		= "Нарушение гермет.";	
+TCHAR TextCodeTimeOver[]			= "Превышено время изм";	
+TCHAR TextCodeRemAutoS[]			= "Автовыбр. по СД";
+TCHAR TextCodeRemAutoD[]			= "Автовыбр. по ДД";
+TCHAR TextCodeRemAutoP[]			= "Автовыбр. по ПД";
+TCHAR TextCodeBreakByUser[]			= "Прервано польз.";
+TCHAR PrintPreviewText[]			= "Печать. Предварительный просмотр";
+TCHAR ContinueText[]				= "Продолжить";
+TCHAR CancelText[]					= "Отменить";
+TCHAR AnalADText[]					= "Анализ АД.";
+TCHAR AnalText[]					= "Анализ ЭКГ.";
+TCHAR FormatConvQ[2];
+TCHAR ChFormatText[] = TEXT("Перевод данных в новый формат"); 
+TCHAR AstroTitle[] = "Astrocard® Holtersystem-2F ЗАО МЕДИТЕК (РОССИЯ) © 1995-2004";
+int PictFonInt = NULL;
+void* MainFont = NULL;
+int MaxNumErr = DWORD(-1);
+unsigned long v_prn_resolution = NULL;
+HBITMAP* PicHandle=NULL;
+char** ErrList = 0;
+FontConf MainF = {0};
+FontConf SmallF = {0};
+FontConf SmallerF = {0};
+#include "errmessr.h"
+//#include "errsupp.h"
+void ProcessedPartPrep (int valuer){}
+TCHAR Month_th[13][16] = {" ","Января","Февраля","Марта","Апреля","Мая","Июня","Июля","Августа","Сентября","Октября","Ноября","Декабря"};
+char	Hospital[256];
+char	SerialNumber[256];
+TCHAR AnalXText[] = " ";
+TCHAR VETextShort[] = " ";
+TCHAR SVEABTextShort[] = " ";
+TCHAR SVETextShort[] = " ";
+TCHAR PauseContinueText[] = " ";
+TCHAR PauseText[] = " ";
+TCHAR PauseDSContinueText[] = " ";
+TCHAR PauseDSText[] = " ";
+TCHAR PauseDNContinueText[] = " ";
+TCHAR PauseDNText[] = " ";
+TCHAR VEPairText[] = " ";
+TCHAR SVEPairText[] = " ";
+
+HINSTANCE hInst;
+HWND hwndSys;
+
+DWORD	cdrv=2;
+extern	DWORD	PMSNR;	//default
+DWORD	SetkaBlock=0;
+extern	DWORD	PredefinedCash;
+BYTE	SynMode=0;
+BYTE	FastDma=0;
+
+DWORD	COLORUP=1;	// 2.03.07	changed to 1 as default
+DWORD	SetkaMode=1;
+DWORD	BeepOn_Off=1;
+DWORD		ASTOPTIME=30;
+//int		UsePrintBmp=0;
+extern	int		UsePrintBmp;	//=0;
+
+char	FilePrinter[256];
+BOOL	IsFilePrinter=FALSE;;
+extern	LPSTR	PrintFilePrinter;
+#if !defined(hmwinifile)
+#define	hmwinifile	TEXT("hmw.ini")
+#endif
+
+BOOL hmwtest()
+{
+	BYTE	hmbuff[2048];
+	DWORD	readdat[2];
+	int		i,
+			k;
+	LPBYTE	StartOfAny;
+	
+	memset(hmbuff, 0, sizeof(hmbuff));
+
+	if (FileRead(hmwinifile, (LPVOID)&hmbuff, sizeof(hmbuff), 0, &readdat[0]))
+	{
+		LPBYTE StartOfUser		= SeachForString(&hmbuff[0], &hmbuff[0] + sizeof(hmbuff), "USER:",	5);
+		LPBYTE StartOfSYS		= SeachForString(&hmbuff[0], &hmbuff[0] + sizeof(hmbuff), "SYS:",	4);
+		LPBYTE StartOfSN		= SeachForString(&hmbuff[0], &hmbuff[0] + sizeof(hmbuff), "SN:",	3);
+		LPBYTE StartOfSRC		= SeachForString(&hmbuff[0], &hmbuff[0] + sizeof(hmbuff), "SRC:",	4);
+		LPBYTE StartOfSNB		= SeachForString(&hmbuff[0], &hmbuff[0] + sizeof(hmbuff), "SNB:",	4);
+		LPBYTE StartOfSNU		= SeachForString(&hmbuff[0], &hmbuff[0] + sizeof(hmbuff), "SNU:",	4);	
+		LPBYTE StartOfSNB_Braem = SeachForString(&hmbuff[0], &hmbuff[0] + sizeof(hmbuff), "SNBB:",	5);
+	
+		if (StartOfSYS >= StartOfUser)
+		{			
+			if (StartOfSN >= StartOfUser)
+			{
+				if (StartOfSRC >= StartOfUser)
+				{
+					/*if (StartOfSNB > 0)
+					{
+						ReqBoardSN = CharToInerger((LPSTR)(StartOfSNB + 4), 10);
+						if (StartOfSNB < StartOfUser)
+						{
+							goto ExitFatalError;
+						}
+					}
+					
+					if (StartOfSNU > 0)
+					{
+						ReqUSBSN = CharToInerger((LPSTR)(StartOfSNU + 4), 10);
+						if (StartOfSNU < StartOfUser)
+						{
+							goto ExitFatalError;
+						}
+					}
+					
+					if (StartOfSNB_Braem > 0)
+					{
+						ReqBoardSN_Braem = CharToInerger((LPSTR)(StartOfSNB_Braem + 5), 10);
+						if (StartOfSNB_Braem < StartOfUser)
+						{
+							goto ExitFatalError;
+						}
+					}*/
+	
+					if ((int)StartOfUser * (int)StartOfSYS * (int)StartOfSN * (int)StartOfSRC != 0)
+					{						
+						if (CountSRC(StartOfUser, StartOfSRC - StartOfUser) == CharToInerger((LPSTR)(StartOfSRC + 4), 6))
+						{
+							StartOfAny = SeachForString(&hmbuff[0], &hmbuff[0] + sizeof(hmbuff), "SynkM:", 6);
+							if (StartOfAny != 0)
+							{
+								SynMode = (BYTE)CharToInerger((LPSTR)(StartOfAny + 6), 2);
+							}
+
+							StartOfAny = SeachForString(&hmbuff[0], &hmbuff[0] + sizeof(hmbuff), "RTYPE:", 6);
+							if (StartOfAny != 0)
+							{
+								RegEnableMask = (DWORD)CharToInerger((LPSTR)(StartOfAny + 6), 6);
+							}
+
+							StartOfAny = SeachForString(&hmbuff[0], &hmbuff[0] + sizeof(hmbuff), "UNDOSNG:", 8);
+							if (StartOfAny != 0)
+							{
+								SinglUndo = (BYTE)CharToInerger((LPSTR)(StartOfAny + 8), 6);
+							}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"CDRV:",5);
+							if(StartOfAny!=0)	{cdrv=CharToInerger((LPSTR)(StartOfAny+5),3);		}
+	
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"PMSNR:",6);
+							if(StartOfAny!=0)	{PMSNR=CharToInerger((LPSTR)(StartOfAny+6),6);		}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"GRIDBLOCK:",10);
+							if(StartOfAny!=0)	{SetkaBlock=CharToInerger((LPSTR)(StartOfAny+10),6);		}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"CASHSIZE:",9);
+							if(StartOfAny!=0)	{PredefinedCash=CharToInerger((LPSTR)(StartOfAny+9),6);		}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"RETRMODE:",9);
+							if(StartOfAny!=0)	{retrmode=CharToInerger((LPSTR)(StartOfAny+9),6);		}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"BLOCKW",6);
+							if(StartOfAny!=0)	{	Blockw=TRUE;		}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"FASTDMA:",8);
+							if(StartOfAny!=0)	{	FastDma=CharToInerger((LPSTR)(StartOfAny+8),6);		}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"HDHBUS:",7);
+							if(StartOfAny!=0)	{	HDH_BUS=CharToInerger((LPSTR)(StartOfAny+7),6);		}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"CSBUS:",6);
+							if(StartOfAny!=0)	{	CS_BUS=CharToInerger((LPSTR)(StartOfAny+6),6);		}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"USEVXDP",7);
+							if(StartOfAny!=0)	{	UseVXDPhys=TRUE;		}
+
+						//	StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"USESSE:",7);
+						//	if(StartOfAny!=0)	{	UseSSE=CharToInerger((LPSTR)(StartOfAny+7),7);	}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"GRIDMODE:",9);
+							if(StartOfAny!=0)	{	SetkaMode=CharToInerger((LPSTR)(StartOfAny+8),6);	}
+
+
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"DTQ:",4);
+							if(StartOfAny!=0)	{	DriverTestQuerry=CharToInerger((LPSTR)(StartOfAny+4),6);		}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"COLORUP:",8);
+							if(StartOfAny!=0)	{	COLORUP=CharToInerger((LPSTR)(StartOfAny+8),6);		}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"BEEPMODE:",9);
+							if(StartOfAny!=0)	{	BeepOn_Off=CharToInerger((LPSTR)(StartOfAny+9),6);		}
+
+	
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"ASTOPTIME:",10);
+							if(StartOfAny!=0)	{	ASTOPTIME=CharToInerger((LPSTR)(StartOfAny+10),6);		}
+
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"PRINTBMP",8);
+							if(StartOfAny!=0)	{	UsePrintBmp=1;		}
+
+							StartOfAny=SeachForString(&hmbuff[0],&hmbuff[0]+sizeof(hmbuff),"FILEPRN:",8);
+							if (StartOfAny != 0)
+							{
+								if (*(StartOfAny + 8) == '"')
+								{
+									k = 0;
+									for(i = 9; i < 256; i++)
+									{
+										switch (*(StartOfAny + i))
+										{
+										case '"':
+											*(FilePrinter + k)	= 0;
+											IsFilePrinter		= TRUE;
+											PrintFilePrinter	= FilePrinter;
+											goto PassFilePrinter;
+											break;
+										case 0xa:
+										case 0xd:
+										case 0:
+											goto PassFilePrinter;
+											break;
+										default:
+											*(FilePrinter + k) = *(StartOfAny + i);
+											k++;
+											break;
+										}
+									}
+								}
+							}
+PassFilePrinter:;
+							
+							//Load Hospital
+							k = 0;
+							for (i=(int)StartOfUser;i<(int)(&hmbuff[0]+sizeof(hmbuff)-1);i++)
+							{
+								if (*(LPBYTE)i == '|')
+									goto ReadHospital;
+							}
+							goto PassHospital;
+ReadHospital:;
+							i += 1;
+							
+							for (i;i<(int)(&hmbuff[0]+sizeof(hmbuff)-1);i++)
+							{
+								Hospital[k] = *(LPBYTE)i;
+								if (Hospital[k] == '$')
+								{
+									goto PassHospital;
+								}
+								k += 1;
+							}
+PassHospital:;
+							Hospital[k] = 0;
+							OemToCharA((LPSTR)&Hospital, (LPSTR)&Hospital);
+
+							//Load Serial Number
+							k = 0;
+							for (i = (int)StartOfSN; i < (int)(&hmbuff[0] + sizeof(hmbuff) - 1); i++)
+							{
+								if (*(LPBYTE)i == '#')
+									goto ReadSN;
+							}
+							goto PassSN;
+ReadSN:;
+							i += 1;
+							for (i; i < (int)(&hmbuff[0] + sizeof(hmbuff) - 1); i++)
+							{
+								SerialNumber[k] = *(LPBYTE)i;
+								if (SerialNumber[k] == '$')
+								{
+									goto PassSN;
+								}
+								k += 1;
+							}
+PassSN:;
+							SerialNumber[k] = 0;
+							OemToCharA((LPSTR)&SerialNumber, (LPSTR)&SerialNumber);
+
+							LPBYTE StartOfADC = SeachForString(&hmbuff[0], &hmbuff[0] + sizeof(hmbuff), "ADC_R:", 6);
+							if (StartOfADC != NULL)
+							{
+								adc_res = CharToInerger((LPSTR)(StartOfADC + 6), 3) - 10;
+							}
+							SYS = CharToInerger((LPSTR)(StartOfSYS + 4),10);
+							
+							int sum = TestOnSYSbit(Elite_option) + TestOnSYSbit(WinStand_option) + TestOnSYSbit(WinLight_option);
+							if (sum > 1)
+							{
+								return FALSE;
+							}
+							
+							return TRUE;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	DWORD err = GetLastError();
+	OutErrOk(NminidError);
+	return FALSE;
+}
+
+#include "pidatald.h"
+#include "someproc.h"
+extern void *AppEnumerator(LPARAM ParamToEnum,LPARAM SubParamToEnum);
+
+BOOL SeachNextEvent(LPAppRecordObject lparo,
+					DWORD*	lpcurrent_qrs_seach,	// selected qrs
+					SAMPLE*	lpPos);
+
+BOOL SeachPrevEvent(LPAppRecordObject lparo,
+					DWORD*	lpcurrent_qrs_seach,	// selected qrs
+					SAMPLE*	lpPos);
+
+extern recCONF recCONF24;
+
+
+
+Spo2Params::Spo2Params()
+:	rightDataLevel(3000),
+	artifact(true),
+	treshold(50),
+	toleranceLenght(2),
+	toleranceCount(1),
+	toleranceDepth(1),
+	decreaseDepth(1),
+	minDesaturationLenght(1),
+	maxDesaturationLenght(200),
+	minFalling(3)
+{
+}
+
+HypoParams::HypoParams()
+:	automatic(true),
+	method(Relative),
+	relativeLength(300),
+	referenceStart(30 * 410),
+	referenceEnd(60 * 410),
+	fallingPercent(70),
+	minDuration(10),
+	maxDuration(120),
+	hypoAfterDesaturationMode(true),
+	hypoAfterDesaturationLength(30)
+{
+}
+
+ReportParams::ReportParams()
+:
+	minSpo2Val(55),
+	minPulseVal(0),
+	minSpo2Local(0),
+	minPulseLocal(0),
+	maxPrecision(2)
+{
+}
+
+qreal HypoParams::percentValue() const
+{
+	return fallingPercent / 100.0;
+}
+
+#include <QtCore/QSettings>
+#include <QtCore/QFile>
+#include "episode.h"
+
+struct Environment::EnvironmentImpl
+{
+	GlobalRecordObject	aro;
+	PIDATALOAD			pidl;
+	QBitArray			options,
+						dataMask;
+	ColorSchemes		colors;
+	QVector<int>		episodeType;
+};
+
+Environment::Environment()
+: pimpl(new EnvironmentImpl)
+{
+	hmwtest();
+	InitAppRecordObject(&pimpl->aro);
+	hKernelInitOnStartup();
+
+	DriverCheck(FALSE);
+	if (HltMemoryAlloc() != FALSE)
+	{
+		BOOL result = LoadEfiStateAndBaseDir(&pimpl->aro);
+		if (result)
+		{
+			/* считать цветовые схемы */ {
+				QSettings settings;
+				settings.beginReadArray("colors");
+				for (int i = Rt; i < MaxData; ++i)
+				{
+					settings.setArrayIndex(i);
+					ColorScheme cs;
+					cs.first	= settings.value("foreground", QColor(255, 255, 255)).toString();
+					cs.second	= settings.value("background", QColor(123, 147, 121)).toString();
+					pimpl->colors.push_back(cs);
+				}
+				for (int i = MaxData; i < MaxData + Episode::All; ++i)
+				{
+					settings.setArrayIndex(i);
+					ColorScheme cs;
+					switch (i - MaxData)
+					{
+					case Episode::Wake:
+						cs.second	=  Qt::white;
+					case Episode::Dream:
+						cs.second	=  QColor(129, 175, 254);
+					case Episode::Artefacts:
+						cs.second	=  Qt::black;
+					case Episode::Desaturation:
+						cs.second	=  Qt::darkGreen;
+					case Episode::Hypopnea:
+						cs.second	=  Qt::darkBlue;
+					case Episode::CentrApnea:
+						cs.second	=  Qt::darkCyan;
+					case Episode::ObstrApnea:
+						cs.second	=  Qt::darkGray;
+					default:
+						cs.second	=  Qt::black;
+					}
+					cs.first	= settings.value("foreground", cs.second).toString();
+					//cs.second	= settings.value("background", QColor(123, 147, 121)).toString();
+					pimpl->colors.push_back(cs);
+				}
+				settings.endArray();
+			}
+
+			episodeTypeParams();
+
+			QSettings settings;
+			pimpl->options = settings.value("Options", QBitArray(MaxOptions)).toBitArray();
+
+			QFile file(QString(pimpl->aro.Files.DBstartpath) + "\\mrecord.inf");
+			setOption(FullMode, !file.exists());
+			
+			pimpl->dataMask = settings.value("DataMask").toBitArray();
+			if (pimpl->dataMask.isEmpty())
+			{
+				pimpl->dataMask.resize(MaxData);
+				if (testOption(FullMode))
+				{
+					setVisible(Rsp2,	true);
+					setVisible(Rsp1,	true);
+					setVisible(X,		true);
+					setVisible(Cann,	true);
+					setVisible(Red,		true);
+					setVisible(Ir,		true);
+					setVisible(v1,		true);
+					setVisible(v2,		true);
+				}
+				else
+				{
+					setVisible(X,		true);
+					setVisible(Cann,	true);
+					setVisible(Red,		true);
+					setVisible(Ir,		true);
+				}
+			}
+
+			if (!testOption(FullMode))
+			{
+				recCONF24.f_desc_10000 = 250 * 10000;
+			}
+
+			int	Result = UpdateKernelToRecord(&pimpl->aro);
+			if ((Result & UpdateKernelToRecord_ok) != NULL)
+			{
+				pimpl->aro.efistate.Code = exit_code;
+
+				if (!testOption(FullMode))
+				{
+					pimpl->aro.DARI.Extro_Head.Main_sampl_10000 = 250 * 10000;
+				}
+				
+				pimpl->pidl.lpappobj = (void*)&pimpl->aro;
+				InitLPPIDATALOAD((LPEnumParam)&AppEnumerator, &pimpl->pidl);
+				
+				// for initialize f_desc_10000X we must read some data before first using
+				RawData temp(msec2sample(100));
+				load(I, 0, temp);
+				
+				pimpl->aro.DARI.vm.start_point = startSample();
+			}
+			else
+			{
+				ReleaseAppRecordObject(&pimpl->aro);
+			}
+		}
+	}
+	else
+	{
+		OutErrOk(GlobMemError);
+	}
+}
+
+Environment::~Environment()
+{
+	/* сохранить цветовые схемы */ {
+		QSettings settings;
+		settings.beginWriteArray("colors");
+		for (int i = 0; i < pimpl->colors.size(); ++i)
+		{
+			settings.setArrayIndex(i);
+			settings.setValue("foreground", pimpl->colors.at(i).first);
+			settings.setValue("background", pimpl->colors.at(i).second);
+		}
+		settings.endArray();
+	}
+
+	setEpisodeTypeParams();
+
+	QSettings settings;
+	settings.setValue("Options",	pimpl->options);
+	settings.setValue("DataMask",	pimpl->dataMask);
+	ReleaseAppRecordObject(&pimpl->aro);
+	delete pimpl;
+}
+
+
+#define UNICODE
+
+/*!
+	Returns QString object containing patient's name.
+*/
+QString Environment::patientName() const
+{
+	char	sourceBuf[lim_fam + 1]	= "",
+			destBuf[lim_fam + 1]	= "";
+
+	memcpy(sourceBuf, pimpl->aro.DARI.statinf.family, lim_fam);
+	OemToCharA(sourceBuf, destBuf);
+	
+	return QString(destBuf);
+}
+
+QString Environment::patientSex() const
+{
+	switch(pimpl->aro.DARI.statinf.sex_p)
+	{
+	case 1:
+	case '1':
+		return QObject::tr("Женский");
+	case 0:
+	case '0':
+	default:
+		return QObject::tr("Мужской");
+	}
+}
+
+quint32 Environment::patientAge() const
+{
+	return static_cast<quint32>(pimpl->aro.DARI.statinf.old_p);
+}
+
+quint32 Environment::patientHeight() const
+{
+	return static_cast<quint32>(pimpl->aro.DARI.statinf.P_height);
+}
+
+quint32 Environment::patientWeight() const
+{
+	return static_cast<quint32>(pimpl->aro.DARI.statinf.P_mass);
+}
+
+QString Environment::patientAddress() const
+{
+	QVector<char> buf(128, '\0');
+	::OemToCharBuff((LPCSTR)pimpl->aro.DARI.statinf.HomeAddres, &buf[0], 128);
+	return QString(&buf[0]);
+}
+
+QString Environment::patientPhone() const
+{
+	QVector<char> buf(14, '\0');
+	::OemToCharBuff((LPCSTR)pimpl->aro.DARI.statinf.PhoneNumber, &buf[0], 14);
+	return QString(&buf[0]);
+}
+
+QString Environment::patientPurpose() const
+{
+	QVector<char> buf(lim_aim, '\0');
+	::OemToCharBuff((LPCSTR)pimpl->aro.DARI.statinf.inv_aim, &buf[0], lim_aim);
+	return QString(&buf[0]);
+}
+
+QDate Environment::inspectionDate() const
+{
+	return QDate((int)pimpl->aro.DARI.statinf.year_inv,	(int)pimpl->aro.DARI.statinf.month_inv, (int)pimpl->aro.DARI.statinf.day_inv);
+}
+
+void Environment::setInspectionDate(const QDate date) const
+{
+	QString statusFile(QString(pimpl->aro.Files.xdir) + "//status.inf");
+	STATUS	status;
+	QFile	file(statusFile);
+	if (file.open(QIODevice::ReadWrite))
+	{
+		if (file.seek(0))
+		{
+			int tt = 0;
+			if (file.read((char *)&status, sizeof(status)) != -1)
+			{
+				file.seek(0);
+				status.day_inv		= date.day();
+				status.month_inv	= date.month();
+				status.year_inv		= date.year();
+				tt = file.write((char *)&status, sizeof(status));
+			}
+			tt = file.error();
+		}
+	}
+	file.close();
+}
+
+QDate Environment::analysisDate() const
+{
+	return QDate((int)pimpl->aro.DARI.statinf.year_anl, (int)pimpl->aro.DARI.statinf.month_anl,	(int)pimpl->aro.DARI.statinf.day_anl);
+}
+
+void Environment::setAnalysisDate(const QDate date) const
+{
+	QString statusFile(QString(pimpl->aro.Files.xdir) + "//status.inf");
+	STATUS	status;
+	QFile	file(statusFile);
+	if (file.open(QIODevice::ReadWrite))
+	{
+		if (file.seek(0))
+		{
+			int tt = 0;
+			if (file.read((char *)&status, sizeof(status)) != -1)
+			{
+				file.seek(0);
+				status.day_anl		= date.day();
+				status.month_anl	= date.month();
+				status.year_anl		= date.year();
+				tt = file.write((char *)&status, sizeof(status));
+			}
+			tt = file.error();
+		}
+	}
+	file.close();
+}
+
+QString Environment::patientWard() const
+{
+	int size = sizeof(pimpl->aro.DARI.statinf.PalText);
+	QVector<char> buf(8, '\0');
+	::OemToCharBuff((LPCSTR)pimpl->aro.DARI.statinf.PalText, &buf[0], 8);
+	return QString(&buf[0]);
+}
+
+void Environment::setPatientWard(const QString &wardText) const
+{
+	QString statusFile(QString(pimpl->aro.Files.xdir) + "//status.inf");
+	STATUS	status;
+	QFile	file(statusFile);
+	if (file.open(QIODevice::ReadWrite))
+	{
+		if (file.seek(0))
+		{
+			int tt = 0;
+			if (file.read((char *)&status, sizeof(status)) != -1)
+			{
+				file.seek(0);
+				::CharToOemBuff(wardText.toAscii(), (LPSTR)status.PalText, sizeof(status.PalText));
+				tt = file.write((char *)&status, sizeof(status));
+			}
+			tt = file.error();
+		}
+	}
+	file.close();
+}
+
+QString Environment::patientDepartment() const
+{
+	QVector<char> buf(20, '\0');
+	::OemToCharBuff((LPCSTR)pimpl->aro.DARI.statinf.OtdText, &buf[0], 20);
+	return QString(&buf[0]);
+}
+
+void Environment::setPatientDepartment(const QString &departmentText) const
+{
+	QString statusFile(QString(pimpl->aro.Files.xdir) + "//status.inf");
+	STATUS	status;
+	QFile	file(statusFile);
+	if (file.open(QIODevice::ReadWrite))
+	{
+		if (file.seek(0))
+		{
+			int tt = 0;
+			if (file.read((char *)&status, sizeof(status)) != -1)
+			{
+				file.seek(0);
+				::CharToOemBuff(departmentText.toAscii(), (LPSTR)status.OtdText, sizeof(status.OtdText));
+				tt = file.write((char *)&status, sizeof(status));
+			}
+			tt = file.error();
+		}
+	}
+	file.close();
+}
+
+QString Environment::patientDoctor() const
+{
+	QVector<char> buf(lim_doc, '\0');
+	::OemToCharBuff((LPCSTR)pimpl->aro.DARI.statinf.doctor, &buf[0], lim_doc);
+	return QString(&buf[0]);
+}
+
+void Environment::setPatientDoctor(const QString &doctorName) const
+{
+	QString statusFile(QString(pimpl->aro.Files.xdir) + "//status.inf");
+	STATUS	status;
+	QFile	file(statusFile);
+	if (file.open(QIODevice::ReadWrite))
+	{
+		if (file.seek(0))
+		{
+			int tt = 0;
+			if (file.read((char *)&status, sizeof(status)) != -1)
+			{
+				file.seek(0);
+				::CharToOemBuff(doctorName.toAscii(), (LPSTR)status.doctor, sizeof(status.doctor));
+				tt = file.write((char *)&status, sizeof(status));
+			}
+			tt = file.error();
+		}
+	}
+	file.close();
+}
+
+/*!
+	Loads portion of data from \a start sample and size of \a data.
+
+	\return Millivolt value for channel \a n.
+*/
+qreal Environment::load(int n, quint32 start, RawData &data) const
+{
+	DataLoadParam	dlp;
+	DWORD			startSample	= start;
+	dlp.lpStartSample			= &startSample;
+	dlp.NumSampleToLoad			= data.size();
+	dlp.lpdata					= &data[0];
+	dlp.chanel					= n;
+	
+	pimpl->pidl.Load_v_dat((void*)&pimpl->aro, &dlp);
+
+	return ::GetMV(&pimpl->aro, n);
+}
+
+/*!
+	Returns an amount of seconds in record.
+
+	\sa sampleTotal()
+*/
+quint32 Environment::secsTotal() const
+{
+	return ::Sample2Second(&pimpl->aro, sampleTotal());
+}
+
+/*!
+	Returns an amount of samples in record.
+
+	\sa secsTotal()
+*/
+quint32 Environment::sampleTotal() const
+{
+	return (pimpl->aro.n_max_point - startSample());
+}
+
+/*!
+	Returns QString object containing title for data channel.
+*/
+QString Environment::channelTitle(int n) const
+{
+	if (n == Ir && !testOption(ShowIr))
+	{
+		return QObject::tr("Пульс");
+	}
+
+	if (n == Red && !testOption(ShowRed))
+	{
+		return QObject::tr("SpO2");
+	}
+
+	char	buf[32];
+	int		logx = ::PhysChan2LogX(&pimpl->aro, n);
+	sprintf_s(buf, sizeof(buf), "%s", ::GetChanelTitle(&pimpl->aro, logx));
+	return QString(buf);
+}
+
+/*!
+	Returns a sequence number of the sample of the record's start.
+
+	\sa startTime()
+*/
+quint32 Environment::startSample() const
+{
+	return ::GetRecordStartSample(&pimpl->aro);
+}
+
+/*!
+	Returns QDateTime object containing a native time of the record's start.
+
+	\sa startSample()
+*/
+QDateTime Environment::startTime() const
+{
+	return sample2NativTime( startSample() );
+}
+
+/*!
+	Returns QString object containing full path to target file.
+*/
+QString	Environment::createPath(const QString &filename) const
+{
+	QString path(pimpl->aro.Files.DBstartpath);
+	if (!path.endsWith('\\'))
+		path.append('\\');
+	return (path + filename);
+}
+
+/*!
+	Converts an amount of milliseconds to an amount of samples.
+
+	\sa sec2sample()
+*/
+quint32 Environment::msec2sample(quint32 ms) const
+{
+	return ::mSecond2Sample(&pimpl->aro, ms);
+}
+
+/*!
+	Converts an amount of seconds to an amount of samples.
+
+	\sa msec2sample()
+*/
+quint32 Environment::sec2sample(quint32 sec) const
+{
+	return ::Second2Sample(&pimpl->aro, sec);
+}
+
+/*!
+	Converts an amount of samples to native time.
+
+	\sa sample2secs()
+*/
+QDateTime Environment::sample2NativTime(quint32 sample) const
+{
+	Htime htime = {0};
+	::Sample2NativTime(&pimpl->aro, sample, &htime);
+
+	QDateTime dt;
+	dt.setDate(QDate(pimpl->aro.DARI.statinf.year_inv,	pimpl->aro.DARI.statinf.month_inv,	pimpl->aro.DARI.statinf.day_inv));
+	dt.setTime(QTime(htime.clock,						htime.min,							htime.sec));
+	dt = dt.addDays(htime.day);
+
+	return dt;
+}
+
+/*!
+	Converts native time to an amount of samples.
+
+	\sa sample2NativTime()
+*/
+quint32 Environment::nativTime2sample(const QDateTime &t) const
+{
+	return sec2sample(startTime().secsTo(t));
+}
+
+/*!
+	Converts an amount of samples to an amount of seconds.
+
+	\sa sample2NativTime()
+*/
+quint32 Environment::sample2secs(quint32 sample) const
+{
+	return ::Sample2Second(&pimpl->aro, sample);
+}
+
+/*!
+*/
+quint32 Environment::sample2msecs(quint32 sample) const
+{
+	return ::Sample2msec(&pimpl->aro, sample);
+}
+
+/*!
+	Returns a milliseconds count per current view frame.
+
+	\sa samplePerScreen(), secsPerScreen()
+*/
+quint32 Environment::msecsPerScreen() const
+{
+	return pimpl->aro.DARI.vm.cocomp;
+}
+
+/*!
+	Returns a seconds count per current view frame.
+
+	\sa samplePerScreen(), msecsPerScreen()
+*/
+quint32 Environment::secsPerScreen() const
+{
+	return pimpl->aro.DARI.vm.cocomp / 1000;
+}
+
+/*!
+	Returns an amount samples for the current screen.
+
+	\sa secsPerScreen(), msecsPerScreen()
+*/
+quint32 Environment::samplePerScreen() const
+{
+	return msec2sample(msecsPerScreen());
+}
+
+/*!
+	Sets an amount of milliseconds for the current screen.
+*/
+void Environment::setScreenTime(int ms)
+{
+	pimpl->aro.DARI.vm.cocomp = ms;
+}
+
+/*!
+	Returns a current view frame's starting sample.
+
+	\sa currentTime(), currentSecond()
+*/
+quint32 Environment::currentSample() const
+{
+	return pimpl->aro.DARI.vm.start_point;
+}
+
+/*!
+	Returns a current view frame's starting second.
+
+	\sa currentTime(), currentSample()
+*/
+quint32 Environment::currentSecond() const
+{
+	return ::Sample2Second(&pimpl->aro, pimpl->aro.DARI.vm.start_point);
+}
+
+/*!
+	Returns QDateTime object containing
+	a current view frame's starting time.
+
+	\sa currentSecond(), currentSample()
+*/
+QDateTime Environment::currentTime() const
+{
+	return sample2NativTime(currentSample());
+}
+
+/*!
+	Sets a current view frame's starting sample.
+
+	\sa setCurrentTime()
+*/
+void Environment::setCurrentSample(int sample)
+{
+	if ((sample + samplePerScreen()) > pimpl->aro.n_max_point)
+	{
+		sample = pimpl->aro.n_max_point - samplePerScreen();
+	}
+
+	if (sample < 0)
+	{
+		sample = 0;
+	}
+
+	pimpl->aro.DARI.vm.start_point = sample;
+}
+
+/*!
+	Sets a native time of start for current screen.
+
+	\sa setCurrentSample()
+*/
+void Environment::setCurrentTime(const QDateTime &t)
+{
+	Htime htime = {0};
+	QTime qtime(t.time());
+	
+	htime.clock	= qtime.hour();
+	htime.min	= qtime.minute();
+	htime.sec	= qtime.second();
+	htime.day	= startTime().daysTo(t);
+
+	setCurrentSample(::NativTime2Sample(&pimpl->aro, &htime));
+}
+
+/*!
+	Returns QString object containing episode's type.
+*/
+QString Environment::episodeTitle(int n) const
+{
+	switch(n)
+	{
+	case Episode::Wake:
+		return QObject::tr("Бодрствование");
+	case Episode::Dream:
+		return QObject::tr("Сон");
+	case Episode::Artefacts:
+		return QObject::tr("Артефакты");
+	case Episode::Desaturation:
+		return QObject::tr("Десатурация");
+	case Episode::Hypopnea:
+		return QObject::tr("Гипопноэ");
+	case Episode::CentrApnea:
+		return QObject::tr("Центр. апноэ");
+	case Episode::ObstrApnea:
+		return QObject::tr("Обстр. апноэ");
+	default:
+		return QObject::tr("Неизвестный эпизод");
+	}
+}
+
+/*!
+	Gets parameters of SPO2 from application's settings.
+
+	\sa setSpo2Params()
+*/
+void Environment::spo2Params(Spo2Params &params) const
+{
+	QSettings settings;
+
+	settings.beginGroup("Spo2Params");
+	
+	params.minFalling	= settings.value("minFalling",	3).toInt();
+	params.treshold		= settings.value("treshold",	50).toInt();
+
+	if (testOption(FullMode))
+	{
+		params.rightDataLevel = settings.value("rightDataLevel", 3000).toFloat();
+	}
+	else
+	{
+		params.rightDataLevel = 0;
+	}
+
+	params.automatic				= settings.value("automatic",				true).toBool();
+	params.artifact					= settings.value("artifact",				true).toBool();
+	params.toleranceLenght			= settings.value("toleranceLenght",			2).toInt();
+	params.toleranceCount			= settings.value("toleranceCount",			1).toInt();
+	params.toleranceDepth			= settings.value("toleranceDepth",			1).toInt();
+	params.decreaseDepth			= settings.value("decreaseDepth",			1).toInt();
+	params.minDesaturationLenght	= settings.value("minDesaturationLenght",	1).toInt();
+	params.maxDesaturationLenght	= settings.value("maxDesaturationLenght",	200).toInt();
+
+	settings.endGroup();
+}
+
+/*!
+	Sets parameters of SPO2 in application's settings.
+
+	\sa spo2Params()
+*/
+void Environment::setSpo2Params(const Spo2Params &params)
+{
+	QSettings settings;
+	settings.beginGroup("Spo2Params");
+	settings.setValue("automatic",				params.automatic);
+	settings.setValue("fakeValue",				params.fakeValue);
+	settings.setValue("rightDataLevel",			params.rightDataLevel);
+	settings.setValue("artifact",				params.artifact);
+	settings.setValue("toleranceLenght",		params.toleranceLenght);
+	settings.setValue("toleranceCount",			params.toleranceCount);
+	settings.setValue("toleranceDepth",			params.toleranceDepth);
+	settings.setValue("decreaseDepth",			params.decreaseDepth);
+	settings.setValue("minDesaturationLenght",	params.minDesaturationLenght);
+	settings.setValue("maxDesaturationLenght",	params.maxDesaturationLenght);
+	settings.setValue("minFalling",				params.minFalling);
+	settings.setValue("treshold",				params.treshold);
+	settings.endGroup();
+}
+
+void Environment::hypoParams(HypoParams &params) const
+{
+	QSettings settings;
+	settings.beginGroup("HypoParams");
+	params.automatic					= settings.value("automatic",					true).toBool();
+	params.method						= settings.value("method",						HypoParams::Relative).toInt();
+	params.relativeLength				= settings.value("relativeLength",				300).toInt();
+	params.referenceStart				= settings.value("referenceStart",				30 * 410).toInt();
+	params.referenceEnd					= settings.value("referenceEnd",				60 * 410).toInt();
+	params.fallingPercent				= settings.value("fallingPercent",				70).toInt();
+	params.minDuration					= settings.value("minDuration",					10).toInt();
+	params.maxDuration					= settings.value("maxDuration",					120).toInt();
+	params.hypoAfterDesaturationMode	= settings.value("hypoAfterDesaturationMode",	true).toBool();	// считать гипопноэ только при последующей десатурации
+	params.hypoAfterDesaturationLength	= settings.value("hypoAfterDesaturationLength", 30).toInt();	//
+	settings.endGroup();
+}
+
+void Environment::setHypoParams(const HypoParams &params)
+{
+	QSettings settings;
+	settings.beginGroup("HypoParams");
+	settings.setValue("automatic",						params.automatic);
+	settings.setValue("method",							params.method);
+	settings.setValue("relativeLength",					params.relativeLength);
+	settings.setValue("referenceStart",					params.referenceStart);
+	settings.setValue("referenceEnd",					params.referenceEnd);
+	settings.setValue("fallingPercent",					params.fallingPercent);
+	settings.setValue("minDuration",					params.minDuration);
+	settings.setValue("maxDuration",					params.maxDuration);
+	settings.setValue("hypoAfterDesaturationMode",		params.hypoAfterDesaturationMode);
+	settings.setValue("hypoAfterDesaturationLength",	params.hypoAfterDesaturationLength);
+	settings.endGroup();
+}
+
+void Environment::reportParams(ReportParams &params) const
+{
+	//local
+	QString reportPath(createPath("report.stg"));
+	QFile	reportFile(reportPath);
+
+	if (reportFile.open(QIODevice::ReadOnly))
+	{
+		if (reportFile.seek(0))
+		{
+			reportFile.read((char *)&params, sizeof(params));
+		}
+	}
+	reportFile.close();
+	
+	//Global
+	QSettings settings;
+	settings.beginGroup("ReportParams");
+	params.minSpo2Val					= settings.value("minSpo2Val",		55).toInt();
+	params.minPulseVal					= settings.value("minPulseVal",		0).toInt();
+	params.maxPrecision					= settings.value("maxPrecision",	2).toInt();
+	settings.endGroup();
+
+	if (params.minSpo2Val > params.minSpo2Local)
+	{
+		params.minSpo2Local = params.minSpo2Val;
+	}
+	if (params.minPulseVal > params.minPulseLocal)
+	{
+		params.minPulseLocal = params.minPulseVal;
+	}
+}
+
+void Environment::setReportParams(const ReportParams &params)
+{
+	//Local
+	QString reportPath(createPath("report.stg"));
+	QFile	reportFile(reportPath);
+
+	if (reportFile.open(QIODevice::WriteOnly))
+	{
+		if (reportFile.seek(0))
+		{
+			reportFile.write((char *)&params, sizeof(params));
+		}
+	}
+	reportFile.close();
+	//Global
+	QSettings settings;
+	settings.beginGroup("ReportParams");
+	settings.setValue("minSpo2Val",		params.minSpo2Val);
+	settings.setValue("minPulseVal",	params.minPulseVal);
+	settings.setValue("maxPrecision",	params.maxPrecision);
+	settings.endGroup();
+}
+
+bool Environment::testOption(OptionIndex index) const
+{
+	if (pimpl->options.size() <= index)
+		return false;//seems to be new added option
+	else
+		return pimpl->options.testBit(index);
+}
+
+void Environment::setOption(OptionIndex index, bool value)
+{
+	if (pimpl->options.size() <= index)
+		pimpl->options.resize(index + 1);
+ 	pimpl->options.setBit(index, value);
+}
+
+bool Environment::isVisible(DataIndex index) const
+{
+	return pimpl->dataMask.testBit(index);
+}
+
+void Environment::setVisible(DataIndex index, bool visible)
+{
+	pimpl->dataMask.setBit(index, visible);
+}
+
+const QBitArray &Environment::dataMask() const
+{
+	return pimpl->dataMask;
+}
+
+void Environment::setDataMask(const QBitArray &mask)
+{
+	pimpl->dataMask = mask;
+}
+
+bool Environment::nextEvent(quint32 &msec) const
+{
+	DWORD	start	= msec2sample(msec),
+			stub	= 0;
+	if (::SeachNextEvent(&pimpl->aro, &stub, &start))
+	{
+		msec = sample2msecs(start);
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+void Environment::setNextApp(int app)
+{
+	pimpl->aro.efistate.Code = app;
+
+	QFile file("sys.dat");
+	if (file.open(QIODevice::WriteOnly))
+	{
+		file.seek(0);
+		file.write((const char*)&pimpl->aro.efistate, sizeof(efi32inf));
+	}
+}
+
+/*!
+	Returns color scheme for desired data channel
+*/
+const ColorScheme &Environment::colorScheme(int index) const
+{
+	return pimpl->colors.at(index);
+}
+
+/*!
+	Sets color scheme for desired data channel
+*/
+void Environment::setColorScheme(int index, const ColorScheme &cs)
+{
+	pimpl->colors[index] = cs;
+}
+
+/*!
+	Returns all color schemes for all data channels
+*/
+const ColorSchemes &Environment::colorSchemes() const
+{
+	return pimpl->colors;
+}
+
+/*!
+	Sets color schemes for all data channels
+*/
+void Environment::setColorSchemes(const ColorSchemes &cs)
+{
+	pimpl->colors = cs;
+}
+
+/*!
+	Get default episode type for channel
+*/
+int	Environment::episodeType(int channel)
+{
+	return pimpl->episodeType.at(channel);
+}
+
+void Environment::setEpisodeType(int channel, int episodeType)
+{
+	pimpl->episodeType.replace(channel, episodeType);
+}
+
+void Environment::episodeTypeParams()
+{
+	QSettings settings;
+	settings.beginReadArray("episodeType");
+	for (int i = Rt; i < MaxData; ++i)
+	{
+		int defaultValue = Episode::Artefacts;
+		switch (i)
+		{
+		case Cann:
+			{
+				defaultValue = Episode::ObstrApnea;//Episode::Wake;Episode::Dream;Episode::Hypopnea;Episode::CentrApnea;
+			}
+			break;
+		case Red:
+			{
+				defaultValue = Episode::Desaturation;
+			}
+			break;
+		default:
+			{
+				defaultValue = Episode::Artefacts;
+			}
+			break;
+		}
+
+		settings.setArrayIndex(i);
+		pimpl->episodeType.push_back(settings.value("type", defaultValue).toInt());
+	}
+	settings.endArray();
+}
+
+void Environment::setEpisodeTypeParams()
+{
+	QSettings settings;
+	settings.beginWriteArray("episodeType");
+	for (int i = 0; i < pimpl->episodeType.size(); ++i)
+	{
+		settings.setArrayIndex(i);
+		settings.setValue("type", pimpl->episodeType.at(i));
+	}
+	settings.endArray();
+}

@@ -1,0 +1,62 @@
+#ifndef SCALE_H
+#define SCALE_H
+
+#include <QtCore/QPair>
+#include <QtCore/QList>
+#include <QtGui/QPainter>
+
+class Scale
+{
+public:
+	typedef QPair<QString, QString> Unit;
+	typedef QList<Unit> UnitList;
+
+	Scale(const UnitList &units);
+	virtual ~Scale();
+
+	const Unit &current() const;
+	void setCurrentIndex(int index);
+	double factor() const;
+	void setFactor(double factor);
+
+	virtual void paint(QPainter *painter, const QRect &rect, int m_distance = 0) const;
+	virtual void zoomIn();
+	virtual void zoomOut();
+
+private:
+	UnitList units_;
+	UnitList::const_iterator current_;
+	double factor_;
+};
+
+inline double Scale::factor() const { return factor_; }
+
+
+
+class Zoom: public Scale
+{
+public:
+	Zoom(const UnitList &units);
+
+	void paint(QPainter *painter, const QRect &rect) const;
+};
+
+
+
+class Range: public Scale
+{
+public:
+	Range(const UnitList &units);
+
+	void paint(QPainter *painter, const QRect &rect) const;
+};
+
+class RangedZoom: public Scale
+{
+public:
+	RangedZoom(const UnitList &units);
+
+	void paint(QPainter *painter, const QRect &rect, int m_distance = 0) const;
+};
+
+#endif // SCALE_H

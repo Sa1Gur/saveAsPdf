@@ -1,0 +1,44 @@
+#ifndef CANNWND_H
+#define CANNWND_H
+
+#include "scalewnd.h"
+#include "main/curves.h"
+
+#include <QtGui/QHBoxLayout>
+
+
+
+class CannWnd: public QWidget
+{
+	Q_OBJECT
+
+public:
+	CannWnd(QWidget *parent = 0);
+	~CannWnd();
+
+signals:
+	void doUpdateView();
+
+public Q_SLOTS:
+	void placeEpisodes();
+	void clearEpisodes();
+	void scale_Change(int Index);
+	void setScale(const Scale::Unit &scale);
+	void setZero(int zero);
+
+protected:
+	void resizeEvent(QResizeEvent *event);
+	bool eventFilter(QObject *target, QEvent *e);
+	void onPaintView();
+
+private:
+	QHBoxLayout*	m_layout;
+	ScaleWnd*		m_scale;
+	QWidget*		m_view;
+	DataCurve*		m_curve;
+	QPixmap			m_pixmap;
+	QWidgetList		m_ews;
+	int				m_zero;
+};
+
+#endif

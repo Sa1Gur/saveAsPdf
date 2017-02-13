@@ -1,0 +1,480 @@
+#include "spo2.h"
+#include <QtCore/QFile>
+#include <QtGui/QMessageBox>
+#include <QtCore/QVariant>
+#include <QtSql/QSqlQuery>
+#include "misc/smooth.h"
+#include "misc/minmax.h"
+#include "misc/median.h"
+#include "main/episode.h"
+
+QVector<int> Spo2::maxpos_(MinMaxBufLen, 0);
+QVector<int> Spo2::minpos_(MinMaxBufLen, 0);
+Spo2::Values Spo2::curDesaturation_;
+const QString Spo2::spo2FileName_("spo2.bin");
+const QString Spo2::spo2ChanFileName_("spo2.chn");
+const QString Spo2::pulseFileName_("pulse.bin");
+
+Spo2::Spo2(const QString &title, const QColor &color, QSplashScreen *splash, Pulse *pulse)
+: Trend(title, color, 10, Spo2Params::fakeValue, 100)
+{
+	EnvironmentPtr pEnv;
+	pEnv->spo2Params(params_);
+	ReportParams reportParams;
+	pEnv->reportParams(reportParams);
+
+	QString spo2Path(pEnv->createPath(spo2FileName_));
+	QString spo2ChanPath(pEnv->createPath(spo2ChanFileName_));
+	QString pulsePath(pEnv->createPath(pulseFileName_));
+
+	QString msg(QObject::tr("Расчет трендов SPO2 и Pulse... "));
+	splash->showMessage(msg, Qt::AlignBottom);
+	
+	QFile fileSpo2(spo2Path);
+	QFile fileSpo2Chan(spo2ChanPath);
+	QFile filePulse(pulsePath);	
+
+	if ((!fileSpo2.open(QIODevice::ReadOnly) || !filePulse.open(QIODevice::ReadOnly)) ||
+		(!fileSpo2Chan.open(QIODevice::ReadOnly)))
+	{
+		fileSpo2.close();
+		filePulse.close();
+		fileSpo2Chan.close();
+		QFile::remove(spo2Path);
+		QFile::remove(spo2ChanPath);
+		QFile::remove(pulsePath);
+
+		if ((fileSpo2.open(QIODevice::WriteOnly) && filePulse.open(QIODevice::WriteOnly)) &&
+			(fileSpo2Chan.open(QIODevice::WriteOnly)))
+		{
+			quint32 timePiece	= pEnv->sec2sample(secPerUnit()),
+					time1Sec	= pEnv->sec2sample(1);
+			pulse->m_values.resize(pEnv->secsTotal());
+
+			if (int nPieces = pEnv->sampleTotal() / timePiece)
+			{
+				RawData ir(std::min(pEnv->sampleTotal(),			timePiece), 0);	// данные для IR
+				RawData red(std::min(pEnv->sampleTotal(),		timePiece), 0);	// данные для RED
+				RawData smoothed(std::min(pEnv->sampleTotal(),	timePiece), 0);	// буфер для сглаженной кривой
+				
+				QVector<RawData> temp_Trend_Data(3 * secPerUnit()); //Циклическое хранилище, для временных данных
+				quint32 start;
+				
+				for(int i = 0, iCount = 0; i <= nPieces; ++i, iCount += secPerUnit())
+				{
+					start = i * timePiece;
+					pEnv->load(Ir,	start, ir);
+					pEnv->load(Red, start, red);
+					
+					Waves temp;
+					build(ir, red, smoothed, start, temp, true);
+					
+					for (int iPos = 0; iPos < secPerUnit(); ++iPos)
+					{
+						if (temp.empty())
+						{
+							m_chanval.push_back(Spo2Params::fakeValue);
+						}
+						else
+						{
+							int		LchVal	= 0;
+							ulong	val		= 0;
+							for (int iTmp = 0; iTmp < temp.size(); ++iTmp)
+							{
+								if ((temp[iTmp].mxPos <= pEnv->sec2sample(iPos + 1)) && (pEnv->sec2sample(iPos) < temp[iTmp].mnPos + pEnv->sec2sample(1)))
+								//if ((abs((int)(temp[iTmp].mnPos + time1Sec - pEnv->sec2sample(iPos)) < time1Sec)) &&
+								//	((abs((int)(temp[iTmp].mxPos + time1Sec - pEnv->sec2sample(iPos)) < time1Sec))))
+								{
+									if (temp[iTmp].spo2 <= 100)
+									{
+										val += temp[iTmp].spo2;
+ 										LchVal++;
+									}
+								}
+							}
+
+							if (LchVal > 0)
+							{
+								m_chanval.push_back(val / LchVal);
+							}
+							else
+							{
+								m_chanval.push_back(Spo2Params::fakeValue);
+							}
+						}
+					}
+
+					for(int iPos =- secPerUnit(); iPos < (2 * secPerUnit()); ++iPos)
+					{
+						if (((iPos + iCount) >= 0) && ((iPos + iCount) < pulse->m_values.size()))
+						{
+							for (int j = 0; j < temp.size(); j++)
+							{
+								if ((abs((qint32)(temp[j].mnPos	+ timePiece - pEnv->sec2sample(iPos + secPerUnit()))) < timePiece / 2) &&
+									((abs((qint32)(temp[j].mxPos	+ timePiece - pEnv->sec2sample(iPos + secPerUnit()))) < timePiece / 2)))
+								{
+									if (temp[j].spo2 != params_.fakeValue)
+									{
+										temp_Trend_Data[iPos + secPerUnit()].push_back(temp[j].spo2);									
+										++pulse->m_values[iPos + iCount];
+									}
+								}
+							}
+							
+							if (iPos < 0)
+							{
+								if (!temp_Trend_Data[iPos + secPerUnit()].empty())
+								{
+									RawData::value_type val = medianHodjLehm<RawData::value_type>(temp_Trend_Data[iPos + secPerUnit()]);
+									m_values.push_back((val > 100 || val < reportParams.minSpo2Local) ? Spo2Params::fakeValue : val);
+								}
+								else
+								{
+									m_values.push_back(Spo2Params::fakeValue);
+								}
+							}
+						}
+					}
+
+					std::swap_ranges(temp_Trend_Data.begin() + secPerUnit(),	temp_Trend_Data.begin() + 2*secPerUnit(),	temp_Trend_Data.begin());
+					std::swap_ranges(temp_Trend_Data.begin() + 2*secPerUnit(),	temp_Trend_Data.end(),						temp_Trend_Data.begin() + secPerUnit());
+					QVector<RawData>::iterator iter = temp_Trend_Data.begin() + 2*secPerUnit();
+					while (iter != temp_Trend_Data.end())
+					{
+						iter->clear();
+						++iter;
+					}
+					
+					splash->showMessage(msg + QString("%1 %").arg((i * 100) / nPieces), Qt::AlignBottom);
+				}
+				
+				Pulse::Values tempPulseData;
+				std::vector<int> tPD;
+				const int ointer = 60 / (2 * secPerUnit());
+				
+				for (size_t i = ointer * secPerUnit(); i < pulse->m_values.size() - ointer * secPerUnit(); i++)
+				{
+					qreal tempPulseValue = pulse->m_values[i];
+					for (int j = 1; j < ointer; j++)
+					{
+						tempPulseValue += pulse->m_values[i - j * secPerUnit()] + pulse->m_values[i + j * secPerUnit()];
+					}
+					tempPulseValue += (pulse->m_values[i - ointer * secPerUnit()] + pulse->m_values[i + ointer * secPerUnit()]) / 2;
+					tempPulseData.push_back(tempPulseValue);
+					tPD.push_back(tempPulseValue);
+				}
+				
+				for (int i = 0; i < tempPulseData.size(); i++)
+				{
+					pulse->m_values[i + ointer * secPerUnit()] = tempPulseData[i];
+				}
+				
+				// Для последней окрестности
+				int numSec = pEnv->sample2secs(pEnv->sampleTotal() - start);
+				for(int iPos = 0; iPos < numSec; ++iPos)
+				{
+					if (!temp_Trend_Data[iPos + numSec].empty())
+					{
+						m_values.push_back(medianHodjLehm<RawData::value_type>(temp_Trend_Data[iPos + numSec]));
+					}
+					else
+					{
+						m_values.push_back(params_.fakeValue);
+					}
+				}
+
+				Q_ASSERT(m_values.size() == pulse->m_values.size());
+
+				/*for (int i = 0; i < m_values.size(); ++i)
+				{
+					if (m_values[i] != params_.fakeValue)
+					{
+						pulse->m_values[i] *= 60 / secPerUnit();
+
+						if (pulse->m_values[i] < reportParams.minPulseLocal)
+							pulse->m_values[i] = 0;
+					}
+					else
+					{
+						pulse->m_values[i] = 0;
+					}
+				}*/
+
+				QDataStream outSpo2(&fileSpo2);
+				outSpo2.setVersion(QDataStream::Qt_4_7);
+				uchar spo2val;
+				foreach (spo2val, m_values)
+					outSpo2 << spo2val;
+
+				QDataStream outSpo2Chan(&fileSpo2Chan);
+				outSpo2Chan.setVersion(QDataStream::Qt_4_7);
+				uchar spo2Chanval;
+				foreach (spo2Chanval, m_chanval)				
+					outSpo2Chan << spo2Chanval;
+
+				QDataStream outPulse(&filePulse);
+				outPulse.setVersion(QDataStream::Qt_4_7);
+				uchar pulseVal;
+				foreach (pulseVal, pulse->m_values)
+					outPulse << pulseVal;
+			}
+		}
+		else
+		{
+			QMessageBox msgBox;
+			msgBox.setText(QObject::tr("Ошибка при создании файла SPO2 и пульса."));
+			msgBox.exec();
+		}
+	}
+	else
+	{
+		QDataStream inSpo2(&fileSpo2);
+		uchar		spo2val;
+		if (inSpo2.version() == QDataStream::Qt_4_7)
+		{
+			while (true)
+			{
+				inSpo2 >> spo2val;
+				if (inSpo2.status() != QDataStream::ReadPastEnd)
+					m_values.push_back(spo2val);
+				else
+					break;
+			}
+		}
+
+		QDataStream inSpo2Chan(&fileSpo2Chan);
+		uchar	spo2Chanval;
+		if (inSpo2Chan.version() == QDataStream::Qt_4_7)
+		{
+			while (true)
+			{
+				inSpo2Chan >> spo2Chanval;
+				if (inSpo2Chan.status() != QDataStream::ReadPastEnd)
+					m_chanval.push_back(spo2Chanval);
+				else
+					break;
+			}
+		}
+
+		QDataStream inPulse(&filePulse);
+		uchar		pulseVal;
+		if (inPulse.version() == QDataStream::Qt_4_7)
+		{
+			while (true)
+			{
+				inPulse >> pulseVal;
+				if (inPulse.status() != QDataStream::ReadPastEnd)
+					pulse->m_values.push_back(pulseVal);
+				else
+					break;
+			}
+		}
+	}
+
+	compress();
+	pulse->compress();
+}
+
+Spo2::~Spo2()
+{
+}
+
+Spo2::Waves &Spo2::build(RawData &ir, RawData &red, RawData &smoothed, int startSample, Spo2::Waves &waves, bool db)
+{
+	RawData::value_type aveIr = medianSubtract<RawData::value_type>(ir, 32767);
+
+	// 737 is Zero Level for small device
+	EnvironmentPtr pEnv;
+	ReportParams reportParams;
+	pEnv->reportParams(reportParams);
+
+	//if (aveIr >= params_.rightDataLevel)
+	{
+		RawData::value_type aveRed = medianSubtract<RawData::value_type>(red, 32767);
+		std::copy(ir.begin(), ir.end(), smoothed.begin());
+		smooth<RawData::value_type>(smoothed, 50);
+
+		int p = 0, q = 0;
+		findMinMax<RawData::value_type>(smoothed, &maxpos_[0], &minpos_[0], p, q);
+
+		// find minmax poses for raw data
+	
+		QVector<int>::iterator iMaxPoses = maxpos_.begin();
+		QVector<int>::iterator iMinPoses = minpos_.begin();
+		
+		if (*iMinPoses > *iMaxPoses)
+		{
+			if (q < p)
+			{
+				--p;
+			}
+		}
+		else
+		{
+			if (p == (q + 1))
+			{
+				--p;
+			}
+			++iMinPoses;
+			--q;
+		}
+		
+		
+		for(int i = 0; i < std::min<int>(p, q); ++i)
+		{
+			RawData::iterator			fiMax = std::max_element(ir.begin() + *(iMaxPoses + i), ir.begin() + *(iMinPoses + i));
+			RawData::difference_type	mxPos = fiMax - ir.begin();
+			
+			RawData::iterator			fiMin = std::min_element(ir.begin() + *(iMaxPoses + i), ir.begin() +  *(iMinPoses + i));
+			RawData::difference_type	mnPos = fiMin - ir.begin();
+
+			//full_mode//
+			RawData::value_type v1 = ((red[mxPos] - red[mnPos]) * (*fiMax + aveIr)) / ((*fiMax - *fiMin) * (red[mxPos] + aveRed));
+			//Nikolay modde//RawData::value_type v2 = (red[mxPos] - red[mnPos]) / (*fiMax - *fiMin);
+			//RawData::value_type saturation = pEnv->testOption(FullMode) ? ((red[mxPos] - red[mnPos]) * (*fiMax + aveIr)) / ((*fiMax - *fiMin) * (red[mxPos] + aveRed)) : (red[mxPos] - red[mnPos]) / (*fiMax - *fiMin);
+
+			
+			uchar spo2 = computeSpo2(v1);//saturation);
+			
+			if (mnPos <= mxPos)//эти значения должны быть в правильном порядке иначе считать смысла нет
+				spo2 = params_.fakeValue;
+			
+			//waves.push_back(Wave(mxPos, mnPos, (spo2 > 0 && 100 >= spo2) ? spo2 : fakeValue()));
+			waves.push_back(Wave(mxPos, mnPos, (spo2 >= reportParams.minSpo2Local && 100 >= spo2) ? spo2 : params_.fakeValue));
+		}
+	}
+	
+	if (waves.empty())
+	{
+		//Если не выполняется aveIR >= RIGHTDATALEVEL мы тоже попадем сюда
+		waves.push_back(Wave(0, 0, params_.fakeValue));
+	}
+
+	if (params_.automatic)
+	{
+		//----------- DISATURATION ANALYSIS -----------
+		//static Event curDesat(0, 0, 0, Event::DESATURATION, 0, 0, 0, "", 0, 0);
+		static quint32	bsec = 0;
+		static quint32	esec = 0;
+		static uchar	bval = 0;
+		static uchar	eval = 0;
+		static	float	trueLowLevel		= params_.fakeValue;
+		static	bool	desaturation		= false;
+		static	int		curToleranceLenght	= params_.toleranceLenght;
+		static	int		curToleranceCount	= params_.toleranceCount;
+		const	float	EPSILON				= 0.09f;
+
+		for (size_t i = 0; i < waves.size(); ++i)
+		{
+			char addOne = desaturation ? 0 : 1;//We starting only from decreasing
+
+			if //(((trueLowLevel + EPSILON >= waves[i].spo2) &&
+				((trueLowLevel >= addOne + waves[i].spo2 ) ||	
+				(trueLowLevel == params_.fakeValue))	//если FAKEVAl, то его не сравнниваем
+			//if (((trueLowLevel + EPSILON >= waves[i].spo2) &&
+			//	(trueLowLevel - waves[i].spo2 < params_.decreaseDepth)) ||	//2 условие - скачек вниз не может быть очень резким
+			//	(trueLowLevel == params_.fakeValue))						//если FAKEVAl, то его не сравнниваем
+			{
+				// Идет убывание (или это первый элемент добавленный в data_)
+				trueLowLevel = waves[i].spo2;
+			
+				if (!desaturation)
+				{
+					curDesaturation_.clear();
+					bsec = pEnv->sample2secs(startSample + waves[i].mnPos);
+					bval = trueLowLevel;
+				}
+			
+				curDesaturation_.push_back(trueLowLevel);
+
+				esec = pEnv->sample2secs(startSample + waves[i].mnPos);
+
+				//не стартуем с FAKEVAL
+				if (trueLowLevel != params_.fakeValue)
+				{
+					desaturation = true;
+				}
+
+				//не ноль только после "разрешенных" участков артефактов
+				if (params_.toleranceLenght - curToleranceLenght)
+				{
+					--curToleranceCount;
+				}
+			}
+			else
+			{
+				// Или убывание временно не идет
+				if (curToleranceLenght > 0 && curToleranceCount > 0)
+				{
+					if (((waves[i].spo2 - trueLowLevel) <= params_.toleranceDepth) || (params_.artifact && (waves[i].spo2 == params_.fakeValue)))
+					{
+						// Но мы терпим подъем значений на toleranceDepth_ или терпим FAKEVAL
+						--curToleranceLenght;
+					}
+					else
+					{
+						//обнуляем параметры
+						trueLowLevel		= params_.fakeValue;
+						curToleranceLenght	= params_.toleranceLenght;
+						curToleranceCount	= params_.toleranceCount;
+						desaturation		= false;
+					}
+				}
+				else
+				{
+					if (((esec - bsec) >= params_.minDesaturationLenght) && ((esec - bsec) <= params_.maxDesaturationLenght))
+					{
+						eval = trueLowLevel;
+						if ((bval >= eval + params_.minFalling) && (eval >= params_.treshold))
+						{
+							curDesaturation_.push_back(trueLowLevel);
+
+							if (db)
+							{
+								QSqlQuery query;
+								query.prepare("INSERT INTO episodes (bsec, esec, type, bval, eval) VALUES(?, ?, ?, ?, ?);");
+								query.addBindValue(bsec);
+								query.addBindValue(esec);
+								query.addBindValue(Episode::Desaturation);
+								query.addBindValue(bval);
+								query.addBindValue(eval);
+								query.exec();
+							}
+						}
+					}
+				
+					//обнуляем параметры
+					trueLowLevel		= params_.fakeValue;
+					curToleranceLenght	= params_.toleranceLenght;
+					curToleranceCount	= params_.toleranceCount;
+					desaturation		= false;
+				}
+			}
+		}
+		//----------- END OF DISATURATION ANALYSIS -----------
+	}
+	
+	return waves;
+}
+
+//
+//		(x-a)(x-b)		  (x-a)(x-c)		 (x-b)(x-c)
+//	f(c)----------- + f(b)----------- + f(a)------------
+//		(c-a)(c-b)		  (b-a)(b-c)		 (a-b)(a-c)
+//
+uchar Spo2::computeSpo2(RawData::value_type x)
+{
+	static const double a = 0.4;
+	static const double b = 1.0;
+	static const double c = 3.4;
+
+	static const double f1 = 100.0;		// f(a){
+	static const double f2 = 85.0;		// f(b)
+	static const double f3 = 1.0;		// f(c)
+
+	static const double c1 = 1.8;		// (a-b)(a-c)
+	static const double c2 = -1.44;		// (b-a)(b-c)
+	static const double c3 = 7.2;		// (c-a)(c-b)
+
+	return (uchar)(85 * (((x - 3.4) * (x - 0.4)) / ((-2.4) * (0.6))) + 100 * (((x - 1) * (x - 3.4)) / ((-0.6) * (-3))));
+}

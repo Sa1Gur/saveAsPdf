@@ -1,0 +1,52 @@
+#ifndef EPISODESFORM_H
+#define EPISODESFORM_H
+
+#include "ui_episodes.h"
+#include <QtSql/QSqlRelationalTableModel>
+#include <QtGui/QItemDelegate>
+#include <QtGui/QPrinter>
+
+class EpisodesDlg: public QDialog, public Ui::EpisodesForm
+{
+	Q_OBJECT
+
+public:
+	EpisodesDlg(QWidget *parent = 0);
+	~EpisodesDlg();
+
+signals:
+	void positionChanged();
+	void episodeRemoved();
+
+protected:
+	void resizeEvent(QResizeEvent *e);
+
+public Q_SLOTS:
+	void onClickedRadioButton1();
+	void onClickedRadioButton2();
+	void onClickedRadioButton3();
+	void onClickedRadioButton4();
+	void onClickedRadioButton5();
+	void onClickedRadioButton6();
+	void onClickedRadioButton7();
+	void print();
+	void remove();
+	void onClickedTableView1(const QModelIndex &index);
+
+private:
+	QSqlRelationalTableModel *tableModel;
+	QPrinter                 *printer;
+};
+
+
+
+class EpisodeDelegate: public QItemDelegate
+{
+	Q_OBJECT
+
+public:
+	EpisodeDelegate(QObject *parent = 0);
+	void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const;
+};
+
+#endif // EPISODESFORM_H

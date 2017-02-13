@@ -1,0 +1,179 @@
+#include <QtGui/QPushButton>
+#include <QtGui/QTextEdit>
+#include <QtGui/QHBoxLayout>
+#include <QtGui/QVBoxLayout>
+#include <QtGui/QComboBox>
+#include <QtGui/QListWidget>
+#include <QtGui/QFontComboBox>
+#include <QtGui/QApplication>
+#include <QtGui/QTextList>
+#include <QtCore/QTextCodec>
+#include <QtGui/QColorDialog>
+#include <QtCore/QFile>
+#include <QtGui/QTextDocumentWriter>
+#include <QtGui/QClipboard>
+#include <QtCore/QMimeData>
+#include <QtGui/QWheelEvent>
+
+#include "main/environment.h"
+#include "main/episode.h"
+#include "episodetypeselectwnd.h"
+
+EpisodeTypeSelectWidget::EpisodeTypeSelectWidget(int episodeType, QWidget *parent)
+:	m_episodeTypeWidth(50),
+	m_episodeType(episodeType)
+{
+	comboStyle = new QComboBox;
+	EnvironmentPtr pEnv;
+	for (int i = 0, cI = 0; i < Episode::All; i++)
+	{
+		if ((1<<i) & pEnv->episodeShow(episodeType))
+		{
+			comboStyle->addItem(pEnv->episodeTitle(i));
+			if (i == pEnv->episodeType(episodeType))
+				comboStyle->setCurrentIndex(cI);
+
+			cI++;
+		}
+	}
+	//comboStyle->setCurrentIndex(pEnv->episodeType(episodeType));	
+	comboStyle->setFocusPolicy(Qt::NoFocus);
+	connect(comboStyle, SIGNAL(activated(int)), this, SLOT(textStyle(int)));
+		
+	listEpisodeShow = new QListWidget;
+	int test = pEnv->episodeShow(episodeType);
+	for (int i = 0; i < Episode::All; i++)
+	{
+		listEpisodeShow->addItem(pEnv->episodeTitle(i));
+		if ((1<<i) & pEnv->episodeShow(episodeType))
+			listEpisodeShow->item(i)->setCheckState(Qt::Checked);
+		else
+			listEpisodeShow->item(i)->setCheckState(Qt::Unchecked);
+	}
+	listEpisodeShow->setFocusPolicy(Qt::NoFocus);
+	connect(listEpisodeShow, SIGNAL(itemChanged(QListWidgetItem*)), this, SLOT(textStyle(QListWidgetItem*)));
+	
+	static const int spacingWidth = 10;
+	
+	QHBoxLayout *toolLayout = new QHBoxLayout;
+	toolLayout->addWidget(comboStyle);
+	toolLayout->addWidget(listEpisodeShow);
+	toolLayout->addSpacing(spacingWidth);
+	toolLayout->addSpacing(spacingWidth);
+	
+	QVBoxLayout *mainLayout = new QVBoxLayout;
+	mainLayout->addLayout(toolLayout);	
+
+	setLayout(mainLayout);
+
+	setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+	setFocusPolicy(Qt::StrongFocus);
+}
+
+EpisodeTypeSelectWidget::~EpisodeTypeSelectWidget()
+{
+}
+
+QSize EpisodeTypeSelectWidget::minimumSizeHint() const
+{
+	return QSize(100, 80);
+}
+
+int EpisodeTypeSelectWidget::titleWidth() const
+{
+	return m_titleWidth;
+}
+
+void EpisodeTypeSelectWidget::setTitleWidth(int width)
+{
+	m_titleWidth = width;
+	update();
+}
+
+int EpisodeTypeSelectWidget::episodeTypeWidth() const
+{
+	return m_episodeTypeWidth;
+}
+
+void EpisodeTypeSelectWidget::setEpisodeTypeWidth(int width)
+{
+	m_episodeTypeWidth = width;
+	update();
+}
+
+void EpisodeTypeSelectWidget::keyPressEvent(QKeyEvent *e)
+{
+	switch (e->key())
+	{
+	//case Qt::Key_0:
+	//	drag = false;
+	//	m_distance = 0;
+	//	update();
+	//	emit zeroChanged(m_distance);
+	//	//delEpisode();
+	//	break;
+	default:
+		QWidget::keyPressEvent(e);
+		break;
+	}
+}
+
+void EpisodeTypeSelectWidget::textStyle(int styleIndex)
+{
+	EnvironmentPtr pEnv;
+	int eType = 0;
+	for (int cI = 0; eType < Episode::All; eType++)
+	{
+		if ((1<<eType) & pEnv->episodeShow(m_episodeType))
+		{
+			if (cI == styleIndex)
+				break;
+
+			cI++;
+		}
+	}
+
+	pEnv->setEpisodeType(m_episodeType, eType);
+
+	if (styleIndex != 0)
+	{
+		QTextListFormat::Style style = QTextListFormat::ListDisc;
+		
+		switch (styleIndex)
+		{
+			 default:
+			 case 1:
+				 style = QTextListFormat::ListDisc;
+				 break;
+			 case 2:
+				 style = QTextListFormat::ListDecimal;
+				 break;
+		}
+	}
+}
+
+ void EpisodeTypeSelectWidget::textStyle(QListWidgetItem * item)
+ {
+	 EnvironmentPtr pEnv;
+	 int mask = pEnv->episodeShow(m_episodeType);
+	 int bit = (mask & 1<<item->listWidget()->row(item)) > 0 ? 1 : 0;
+	 int place = item->listWidget()->row(item);
+	 mask -= bit <<item->listWidget()->row(item);
+	 mask += (item->checkState() == Qt::Checked)<<item->listWidget()->row(item);
+	 pEnv->setEpisodeShow(m_episodeType, mask);
+
+	 comboStyle->clear();
+	 for (int i = 0, cI = 0; i < Episode::All; i++)
+	 {
+		 if ((1<<i) & pEnv->episodeShow(m_episodeType))
+		 {
+			 comboStyle->addItem(pEnv->episodeTitle(i));
+			 if (i == pEnv->episodeType(m_episodeType))
+				 comboStyle->setCurrentIndex(cI);
+
+			 cI++;
+		 }
+	 }
+
+	 emit doUpdateView();
+ }

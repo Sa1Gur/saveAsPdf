@@ -1,0 +1,41 @@
+#include <QtCore/QProcess>
+
+#include "holterwnd.h"
+
+#include <Windows.h>
+
+typedef BOOL(WINAPI *_GotoRecordSample)(LPVOID lpappobj, DWORDLONG* lpsamle64);
+
+HolterWidget::HolterWidget(int episodeType, QWidget *parent)
+{
+	/*QProcess *dbase = new QProcess();
+	dbase->setWorkingDirectory(QString("C:\\Users\\Guriy\\Dropbox\\Work\\Holtwin\\"));
+	dbase->start(QString("C:\\Users\\Guriy\\Dropbox\\Work\\Holtwin\\dbase.exe"));
+	dbase->waitForFinished();*/
+
+	if (true)//if sys.dat has holter_code
+	{
+		/*QProcess *holter = new QProcess();
+		holter->setWorkingDirectory(QString("C:\\Users\\Guriy\\Dropbox\\Work\\Holtwin\\"));
+		holter->start(QString("C:\\Users\\Guriy\\Dropbox\\Work\\Holtwin\\holter.exe"));
+		holter->pid();*/
+
+		HINSTANCE hGetProcIDDLL = LoadLibrary(L"C:\\Users\\Guriy\\Dropbox\\Work\\Holtwin\\MDDLL.dll");
+		qWinAppInst();
+		if (!hGetProcIDDLL) {
+			//std::cout << "could not load the dynamic library" << std::endl;
+			//return -1;
+		}
+		_GotoRecordSample GotoRecordSample = (_GotoRecordSample)GetProcAddress(hGetProcIDDLL, "GotoRecordSample");
+		if (!GotoRecordSample) {
+
+			int ff = 0;			
+		}
+		int tt = 0;
+		tt++;
+	}
+}
+
+HolterWidget::~HolterWidget()
+{
+}

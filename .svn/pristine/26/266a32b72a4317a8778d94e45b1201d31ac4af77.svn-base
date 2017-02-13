@@ -1,0 +1,17 @@
+#include "filters.h"
+
+void slidingAvg(QVector<float> &data, int n, float ignore)
+{
+	int pieces = data.size() / (n + 1);
+	for (int i = 0; i < data.size() - (n + 1); ++i)
+	{
+		if (data[i] != ignore)
+		{
+			float ave = 0;
+			for (int j = i; j < (i + (n + 1)); ++j) {
+				ave += data[j];
+			}
+			data[i] = ave / (n + 1);
+		}
+	}
+}

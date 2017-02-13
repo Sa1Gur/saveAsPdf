@@ -1,0 +1,328 @@
+#include "settings.h"
+#include "main/mainwnd.h"
+#include "main/environment.h"
+#include "trends/trends.h"
+#include <QtGui/QMessageBox>
+
+SettingsDlg::SettingsDlg(QWidget *parent)
+: QDialog(parent),
+m_parent(parent)
+{
+	setupUi(this);
+
+	EnvironmentPtr pEnv;
+	Spo2Params spo2params;
+	pEnv->spo2Params(spo2params);
+	HypoParams hypoParams;
+	pEnv->hypoParams(hypoParams);
+	QDateTime recordStart(pEnv->startTime());
+	QDateTime recordEnd(pEnv->startTime().addSecs(pEnv->secsTotal()));
+
+	lineEdit1->setText(QString("%1").arg(spo2params.minFalling));
+	lineEdit_minDesatLen->setText(QString("%1").arg(spo2params.minDesaturationLenght));
+	lineEdit2->setText(QString("%1").arg(spo2params.maxDesaturationLenght));
+	lineEdit7->setText(QString("%1").arg(spo2params.treshold));
+
+	lineEdit3->setText(QString("%1").arg(spo2params.toleranceCount));
+	lineEdit4->setText(QString("%1").arg(spo2params.toleranceLenght));
+	lineEdit5->setText(QString("%1").arg(spo2params.toleranceDepth));
+	lineEdit6->setText(QString("%1").arg(spo2params.decreaseDepth));
+
+	comboBox_automatic_Apnoe_detect->setChecked(spo2params.automatic);
+	checkBox1->setChecked(spo2params.artifact);
+	checkBox2->setChecked(hypoParams.automatic);
+
+	if (hypoParams.method == HypoParams::Relative)
+	{
+		radioButton1->toggle();
+		onToggledRadioButton1(true);
+	}
+	else if (hypoParams.method == HypoParams::Reference)
+	{
+		radioButton2->toggle();
+		onToggledRadioButton1(false);
+	}
+
+	// ограничить значения дат в рамках записи
+	dateEdit1->setMinimumDate(recordStart.date());
+	dateEdit2->setMinimumDate(recordStart.date());
+	dateEdit1->setMaximumDate(recordEnd.date());
+	dateEdit2->setMaximumDate(recordEnd.date());
+
+	dateEdit1->setDate(pEnv->sample2NativTime(hypoParams.referenceStart).date());
+	timeEdit1->setTime(pEnv->sample2NativTime(hypoParams.referenceStart).time());
+	dateEdit2->setDate(pEnv->sample2NativTime(hypoParams.referenceEnd).date());
+	timeEdit2->setTime(pEnv->sample2NativTime(hypoParams.referenceEnd).time());
+
+	spinBox1->setRange(0, 100);
+	spinBox1->setValue(hypoParams.fallingPercent);
+	lineEdit8->setText(QString("%1").arg(hypoParams.relativeLength));
+	lineEdit9->setText(QString("%1").arg(hypoParams.minDuration));
+	lineEdit10->setText(QString("%1").arg(hypoParams.maxDuration));
+	checkBox->setChecked(hypoParams.hypoAfterDesaturationMode);
+	lineEdit_HypoAfterDesatLen->setText(QString("%1").arg(hypoParams.hypoAfterDesaturationLength));
+
+	checkBox_1->setChecked(pEnv->testOption(ShowRed));
+	checkBox_2->setChecked(pEnv->testOption(ShowIr));
+	checkBox_3->setChecked(pEnv->testOption(ShowX));
+	checkBox_ShowDefaultEpisodeType->setChecked(pEnv->testOption(chooseDefaultEpisodeTypeWidget));
+
+	okButton1->setEnabled(false);//кнопки активны только
+	okButton2->setEnabled(false);//при наличие изменений в настройках
+
+	//Debug tab->
+	ReportParams reportParams;
+	pEnv->reportParams(reportParams);
+	lineEdit_minSpo2Val->setText(QString("%1").arg(reportParams.minSpo2Val));
+	lineEdit_minSpo2Local->setText(QString("%1").arg(reportParams.minSpo2Local));
+	lineEdit_minPulseVal->setText(QString("%1").arg(reportParams.minPulseVal));
+	lineEdit_minPulseLocal->setText(QString("%1").arg(reportParams.minPulseLocal));
+	lineEdit_maxPrecision->setText(QString("%1").arg(reportParams.maxPrecision));
+	//Debug tab<-
+}
+
+void SettingsDlg::onStateChangedCheckBox1(int state)
+{
+	if (state == Qt::Unchecked)
+	{
+		lineEdit3->setEnabled(false);
+		lineEdit4->setEnabled(false);
+		lineEdit5->setEnabled(false);
+		lineEdit6->setEnabled(false);
+		
+		label5->setEnabled(false);
+		label6->setEnabled(false);
+		label7->setEnabled(false);
+		label8->setEnabled(false);
+	}
+	else if (state == Qt::Checked)
+	{
+		lineEdit3->setEnabled(true);
+		lineEdit4->setEnabled(true);
+		lineEdit5->setEnabled(true);
+		lineEdit6->setEnabled(true);
+		
+		label5->setEnabled(true);
+		label6->setEnabled(true);
+		label7->setEnabled(true);
+		label8->setEnabled(true);
+	}
+}
+
+void SettingsDlg::onDesaturationParamsChange()
+{
+	Spo2Params		spo2params;
+	EnvironmentPtr	pEnv;
+	pEnv->spo2Params(spo2params);
+	bool			change = false;
+
+	if (comboBox_automatic_Apnoe_detect->isChecked() != spo2params.automatic)
+	{
+		change = true;
+	}
+
+	if (checkBox1->isChecked() != spo2params.artifact)
+	{
+		change = true;
+	}
+	
+	if (spo2params.minFalling				!= lineEdit1->text().toInt())
+	{
+		change = true;
+	}
+
+	if (spo2params.minDesaturationLenght	!= lineEdit_minDesatLen->text().toInt())
+	{
+		change = true;
+	}
+
+	if (spo2params.maxDesaturationLenght	!= lineEdit2->text().toInt())
+	{
+		change = true;
+	}
+
+	if (spo2params.toleranceCount			!= lineEdit3->text().toInt())
+	{
+		change = true;
+	}
+	if (spo2params.toleranceLenght			!= lineEdit4->text().toInt())
+	{
+		change = true;
+	}
+	if (spo2params.toleranceDepth			!= lineEdit5->text().toInt())
+	{
+		change = true;
+	}
+	if (spo2params.decreaseDepth			!= lineEdit6->text().toInt())
+	{
+		change = true;
+	}
+
+	if (spo2params.treshold					!= lineEdit7->text().toInt())
+	{
+		change = true;
+	}
+
+	if (change)
+	{
+		okButton1->setEnabled(true);
+	}
+	else
+	{
+		okButton1->setEnabled(false);
+	}
+}
+
+void SettingsDlg::onHypoParamsChange()
+{
+	HypoParams		hypoparams;
+	EnvironmentPtr	pEnv;
+	pEnv->hypoParams(hypoparams);
+	bool			change = false;
+
+	if (checkBox2->isChecked() != hypoparams.automatic)
+	{
+		change = true;
+	}
+
+	if (hypoparams.fallingPercent		!= spinBox1->value())
+	{
+		change = true;
+	}
+
+	if (checkBox->isChecked() != hypoparams.hypoAfterDesaturationMode)
+	{
+		change = true;
+	}
+
+	if (change)
+	{
+		okButton2->setEnabled(true);
+	}
+	else
+	{
+		okButton2->setEnabled(false);
+	}
+
+	if (((radioButton1->isChecked()) && (hypoparams.method != HypoParams::Relative)) ||
+		((radioButton2->isChecked()) && (hypoparams.method != HypoParams::Reference)))
+	{
+		change = true;
+	}
+
+	if (hypoparams.relativeLength		!= lineEdit8->text().toInt())
+	{
+		change = true;
+	}
+
+	if (hypoparams.minDuration			!= lineEdit9->text().toInt())
+	{
+		change = true;
+	}
+
+	if (hypoparams.maxDuration			!= lineEdit10->text().toInt())
+	{
+		change = true;
+	}
+
+	if (lineEdit_HypoAfterDesatLen->text().toInt() != hypoparams.hypoAfterDesaturationLength)
+	{
+		change = true;
+	}
+
+	if (change)
+	{
+		okButton2->setEnabled(true);
+	}
+	else
+	{
+		okButton2->setEnabled(false);
+	}
+}
+
+void SettingsDlg::onToggledRadioButton1(bool checked)
+{
+	groupBox_3->setEnabled(!checked);
+	label_7->setEnabled(checked);
+	lineEdit8->setEnabled(checked);
+	label_8->setEnabled(checked);
+}
+
+void SettingsDlg::spo2Accept()
+{
+	EnvironmentPtr	pEnv;
+	Spo2Params		params;
+	params.automatic				= comboBox_automatic_Apnoe_detect->isChecked();
+	params.artifact					= checkBox1->isChecked();
+	params.minFalling				= lineEdit1->text().toInt();
+	params.minDesaturationLenght	= lineEdit_minDesatLen->text().toInt();
+	params.maxDesaturationLenght	= lineEdit2->text().toInt();
+	params.toleranceCount			= lineEdit3->text().toInt();
+	params.toleranceLenght			= lineEdit4->text().toInt();
+	params.toleranceDepth			= lineEdit5->text().toInt();
+	params.decreaseDepth			= lineEdit6->text().toInt();
+	params.treshold					= lineEdit7->text().toInt();
+	pEnv->setSpo2Params(params);
+
+	recalculate(SPO2);
+	accept();
+}
+
+void SettingsDlg::hypoAccept()
+{
+	EnvironmentPtr	pEnv;
+	HypoParams		params;
+	params.automatic							= checkBox2->isChecked();
+	radioButton1->isChecked() ? params.method	= HypoParams::Relative : params.method = HypoParams::Reference;
+	params.relativeLength						= lineEdit8->text().toInt();
+	params.referenceStart						= pEnv->nativTime2sample(QDateTime(dateEdit1->date(), timeEdit1->time()));
+	params.referenceEnd							= pEnv->nativTime2sample(QDateTime(dateEdit2->date(), timeEdit2->time()));
+	params.fallingPercent						= spinBox1->value();
+	params.minDuration							= lineEdit9->text().toInt();
+	params.maxDuration							= lineEdit10->text().toInt();
+	params.hypoAfterDesaturationMode			= checkBox->isChecked();
+	params.hypoAfterDesaturationLength			= lineEdit_HypoAfterDesatLen->text().toInt();
+	pEnv->setHypoParams(params);
+
+	recalculate(CANN);
+	accept();
+}
+
+void SettingsDlg::dbgAccept()
+{
+	EnvironmentPtr pEnv;
+	pEnv->setOption(ShowRed,						checkBox_1->isChecked());
+	pEnv->setOption(ShowIr,							checkBox_2->isChecked());
+	pEnv->setOption(ShowX,							checkBox_3->isChecked());
+	pEnv->setOption(chooseDefaultEpisodeTypeWidget,	checkBox_ShowDefaultEpisodeType->isChecked());
+
+	ReportParams reportParams;
+	reportParams.minSpo2Val		= lineEdit_minSpo2Val->text().toInt();
+	reportParams.minPulseVal	= lineEdit_minPulseVal->text().toInt();
+	reportParams.maxPrecision	= lineEdit_maxPrecision->text().toInt();
+	pEnv->setReportParams(reportParams);
+
+	QMessageBox::warning(this, tr("Внимание!!!"), tr("Изменения, сделанные в этой вкладке, проявятся ПОСЛЕ ПЕРЕЗАПУСКА приложения!"));
+
+	accept();
+	m_parent->close();//We will close main window to apply changes 
+}
+
+void SettingsDlg::accept()
+{
+	emit update();
+
+	QDialog::accept();
+}
+
+void SettingsDlg::recalculate(int trend_id)
+{
+	QSplashScreen *splash = new QSplashScreen(this, QPixmap(":/MainWnd/logo.png"));
+	splash->show();
+	
+	TrendsPtr ptr;
+	ptr->recalculate(trend_id, splash);
+
+	splash->finish(this);
+	delete splash;
+}

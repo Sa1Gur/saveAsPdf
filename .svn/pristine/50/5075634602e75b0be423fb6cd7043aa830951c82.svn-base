@@ -1,0 +1,97 @@
+#include <QtCore/QFile>
+#include <QtGui/QMessageBox>
+#include "trends.h"
+#include "trend.h"
+#include "position.h"
+#include "spo2.h"
+#include "pulse.h"
+#include "cannula.h"
+#include <QtSql/QSqlQuery>
+#include "main/episode.h"
+
+QString Trends::fileEvents("episodes.db");
+
+Trends::Trends()
+{
+}
+
+void Trends::construct(QSplashScreen *splash)
+{
+	trends_.push_back( new Position(QObject::tr("Положение тела"), Qt::black, splash) );
+	trends_.push_back( new Pulse("Pulse", QColor(238,78,34)) );
+	trends_.push_back( new Spo2("SpO2", Qt::darkRed, splash, static_cast<Pulse *>(trends_[PULSE])) );
+	trends_.push_back( new Cannula("Cannula", Qt::darkBlue, splash) );
+}
+
+const QVector<Trend *> &Trends::trends() const
+{
+	return trends_;
+}
+
+Trends::~Trends()
+{
+	for (int i = 0; i < trends_.size(); ++i) {
+		delete trends_[i];
+	}
+}
+
+void Trends::recalculate(int trend_id, QSplashScreen *splash)
+{
+	EnvironmentPtr pEnv;
+
+	switch (trend_id)
+	{
+	case POSE:
+		break;
+	
+	case SPO2:
+		{
+			delete trends_[trend_id];
+
+			if (!QFile::remove( pEnv->createPath(Spo2::spo2FileName_) )) {
+				QMessageBox msgBox;
+				msgBox.setText(QObject::tr("Ошибка удаления: ") + Spo2::spo2FileName_);
+				msgBox.exec();
+			}
+			
+			if (!QFile::remove( pEnv->createPath(Spo2::pulseFileName_) )) {
+				QMessageBox msgBox;
+				msgBox.setText(QObject::tr("Ошибка удаления: ") + Spo2::pulseFileName_);
+				msgBox.exec();
+			}
+
+			QSqlQuery query;
+			query.exec(
+				QString("DELETE FROM episodes WHERE type = %1").arg(Episode::Desaturation));
+
+			delete trends_[PULSE];
+			trends_[PULSE] = new Pulse("Pulse", QColor(238,78,34));
+			trends_[trend_id] = new Spo2("SpO2", Qt::darkRed, splash, static_cast<Pulse *>(trends_[PULSE]));
+		}
+		break;
+
+	case CANN:
+		{
+			delete trends_[trend_id];
+
+			if (!QFile::remove( pEnv->createPath(Cannula::canFilename_) )) {
+				QMessageBox msgBox;
+				msgBox.setText(QObject::tr("Ошибка удаления: ") + Cannula::canFilename_);
+				msgBox.exec();
+			}
+
+			if (!QFile::remove( pEnv->createPath(Cannula::secFilename_) )) {
+				QMessageBox msgBox;
+				msgBox.setText(QObject::tr("Ошибка удаления: ") + Cannula::secFilename_);
+				msgBox.exec();
+			}
+
+			QSqlQuery query;
+			query.exec(
+				QString("DELETE FROM episodes WHERE type = %1").arg(Episode::Hypopnea));
+
+			trends_[trend_id] = new Cannula("Cannula", Qt::darkBlue, splash);
+		}
+		break;
+	}
+}

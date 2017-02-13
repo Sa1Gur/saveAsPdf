@@ -1,0 +1,76 @@
+#include "curves.h"
+#include "environment.h"
+#include "misc/filters.h"
+#include "trends/spo2.h"
+
+DataCurve::DataCurve(int dataIndex)
+:	index_(dataIndex),
+	sampleCount_(1),
+	sampleStart_(0),
+	zoom_(0.5)
+{
+}
+
+int DataCurve::index() const
+{
+	return index_;
+}
+
+int DataCurve::sampleCount() const
+{
+	return sampleCount_;
+}
+
+void DataCurve::setSampleCount(int sampleCount)
+{
+	sampleCount_ = sampleCount;
+}
+
+int DataCurve::sampleStart() const
+{
+	return sampleStart_;
+}
+
+void DataCurve::setSampleStart(int sampleStart)
+{
+	sampleStart_ = sampleStart;
+}
+
+double DataCurve::zoom() const
+{
+	return zoom_;
+}
+
+void DataCurve::setZoom(double zoom)
+{
+	zoom_ = zoom;
+}
+
+void DataCurve::draw(QPainter *painter, const QRect &rect, int zero) const
+{
+	EnvironmentPtr	pEnv;
+	RawData			rdata(sampleCount_);
+	double			mv = pEnv->load(index_, sampleStart_, rdata);
+
+	slidingAvg(rdata, 5);
+
+	RawData::value_type average = 0;
+	for (int i = 0; i < rdata.size(); ++i)
+	{
+		average += rdata[i];
+	}
+	average /= rdata.size();
+
+	double	factor		= -rect.height() / (zoom_ * mv),
+			zeroPoint	= rect.top() + rect.height() / 2 - zero;
+
+	QPolygonF curve(rdata.size());
+	for (int i = 0; i < curve.size(); ++i)
+	{
+		double	x = ((double)i * rect.width()) / rdata.size() + rect.left(),
+				y = zeroPoint - (rdata[i] - average) * factor;
+		curve[i] = QPointF(x, y);
+	}
+
+	painter->drawPolyline(curve);
+}

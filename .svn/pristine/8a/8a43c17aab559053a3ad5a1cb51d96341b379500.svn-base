@@ -1,0 +1,16 @@
+#ifndef HOLTERWND_H
+#define HOLTERWND_H
+
+#include <QtGui/QWidget>
+#include <QtGui/QDialog>
+
+class HolterWidget : public QDialog
+{
+	//Q_OBJECT
+
+public:
+	HolterWidget(int episodeType = 0, QWidget *parent = 0);
+	~HolterWidget();
+};
+
+#endif // HOLTERWND_H

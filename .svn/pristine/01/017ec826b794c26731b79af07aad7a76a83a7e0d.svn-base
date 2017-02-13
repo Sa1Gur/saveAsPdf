@@ -1,0 +1,24 @@
+<RCC>
+    <qresource prefix="/MainWnd">
+        <file>logo.png</file>
+        <file>exit.png</file>
+        <file>compress.png</file>
+        <file>expand.png</file>
+        <file>clock.png</file>
+        <file>screen.png</file>
+        <file>view.png</file>
+        <file>tcompress.png</file>
+        <file>texpand.png</file>
+        <file>heart.png</file>
+        <file>spo2.png</file>
+        <file>cann.png</file>
+        <file>delete.png</file>
+        <file>mark.png</file>
+        <file>fileprint.png</file>
+        <file>filesave.png</file>
+        <file>filesaveas.png</file>
+    </qresource>
+    <qresource prefix="/templates">
+        <file>episodes.html</file>
+    </qresource>
+</RCC>

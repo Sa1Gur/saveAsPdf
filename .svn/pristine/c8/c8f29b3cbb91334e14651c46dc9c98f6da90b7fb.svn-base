@@ -1,0 +1,32 @@
+#ifndef CANNULA_H
+#define CANNULA_H
+
+#include "trend.h"
+#include <QtGui/QSplashScreen>
+#include "main/environment.h"
+
+class Cannula: public Trend
+{
+public:
+	Cannula(const QString &title, const QColor &color, QSplashScreen *splash);
+	~Cannula();
+
+	typedef QVector<int> MMData;
+	static void build(RawData &data, MMData &mmpos);
+
+	static const QString canFilename_;
+	static const QString secFilename_;
+
+private:
+	HypoParams params_;
+	Values dsec_;
+
+	enum { BufSize = 10240 };
+
+	static int max_[BufSize];
+	static int min_[BufSize];
+	static int maxpos_[BufSize];
+	static int minpos_[BufSize];
+};
+
+#endif // CANNULA_H

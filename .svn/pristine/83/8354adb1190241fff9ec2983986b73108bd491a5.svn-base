@@ -1,0 +1,112 @@
+#include "templates.h"
+#include <QtCore/QDir>
+#include <QtGui/QTextDocument>
+#include <QtGui/QFileDialog>
+#include <QtGui/QTextDocumentWriter>
+#include <QtGui/QMessageBox>
+
+/*!
+	Replace the "Print" button on the button "Save as..."
+*/
+TemplatesDlg::TemplatesDlg(QWidget *parent)
+: QDialog(parent)
+{
+	setupUi(this);
+	setWindowTitle(tr("Редактор шаблонов заключений"));
+
+	printButton->setIcon(QIcon(":/MainWnd/filesaveas.png"));
+	printButton->setToolTip(tr("Сохранить как..."));
+
+	createFileList();
+	connect(comboBox, SIGNAL(activated(QString)), this, SLOT(load(QString)));
+	comboBox->setCurrentIndex(0);
+	load(comboBox->currentText());
+
+	saveButton->setEnabled(false);
+	connect(richEdit->document(), SIGNAL(modificationChanged(bool)),
+		saveButton, SLOT(setEnabled(bool)));
+}
+
+void TemplatesDlg::load(const QString &fileName)
+{
+	QString fn = QString(".\\templates\\%1").arg(fileName);
+	if (QFile::exists(fn)) {
+		richEdit->load(fn);
+		currentFileName = fn;
+		richEdit->document()->setModified(false);
+	}
+}
+
+/*!
+	Binded for functionality "Save as..."
+*/
+void TemplatesDlg::print()
+{
+	QString fn = QFileDialog::getSaveFileName(this,
+		tr("Сохранить шаблон как..."), ".\\templates",
+		tr("Файлы шаблонов (*.html)"));
+	if (!fn.isEmpty())
+	{
+		if (!fn.endsWith(".html", Qt::CaseInsensitive)) {
+			fn += ".html";
+		}
+		
+		currentFileName = fn;
+		fileSave();
+	}
+}
+
+void TemplatesDlg::save()
+{
+	if (richEdit->document()->isModified()) {
+		int r = QMessageBox::question(this, windowTitle(), tr("Сохранить изменения?"),
+			QMessageBox::Yes|QMessageBox::No, QMessageBox::No);
+		if (r == QMessageBox::Yes) {
+			fileSave();
+		}
+	}
+}
+
+void TemplatesDlg::fileSave()
+{
+	QTextDocumentWriter writer(currentFileName);
+	if (writer.write(richEdit->document()))
+	{
+		richEdit->document()->setModified(false);
+
+		createFileList();
+
+		int index = currentFileName.lastIndexOf("/");
+		if (index == -1) {
+			index = currentFileName.lastIndexOf("\\");
+		}
+		index += 1;
+		index = comboBox->findText(currentFileName.right(
+			currentFileName.length() - index));
+		if (index == -1) {
+			index = 0;
+		}
+		
+		comboBox->setCurrentIndex(index);
+		load(comboBox->currentText());
+	}
+}
+
+void TemplatesDlg::createFileList()
+{
+	comboBox->clear();
+
+	QStringList filters;
+	filters.push_back("*.html");
+
+	QStringList files = QDir(".\\templates").entryList(filters);
+	if (!files.isEmpty()) {
+		Q_FOREACH(const QString &name, files) {
+			comboBox->addItem(name);
+		}
+	}
+	else {
+		comboBox->addItem(tr("Шаблоны не найдены..."));
+		comboBox->setEnabled(false);
+	}
+}

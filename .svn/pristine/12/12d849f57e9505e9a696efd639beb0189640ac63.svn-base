@@ -1,0 +1,11 @@
+#include "text_utils.h"
+
+void find_replace(QTextDocument *document, const QString &what, const QString &with)
+{
+	QTextCursor cursor = document->find(what, 0, QTextDocument::FindWholeWords);
+	cursor.beginEditBlock();
+	cursor.select(QTextCursor::LineUnderCursor);
+	cursor.removeSelectedText();
+	cursor.insertText(with);
+	cursor.endEditBlock();
+}

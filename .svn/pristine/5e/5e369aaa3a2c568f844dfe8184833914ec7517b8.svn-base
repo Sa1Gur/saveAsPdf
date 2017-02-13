@@ -1,0 +1,24 @@
+#ifndef MULDIV_H
+#define MULDIV_H
+
+template <typename T>
+T muldiv(T number, T numerator, T denominator);
+//template <>
+//int muldiv(int number, int numerator, int denominator);
+//template <>
+//double muldiv(double number, double numerator, double denominator);
+
+/*!
+	Деление не возбуждающее исключений
+*/
+template <typename T>
+T safeDiv(T numerator, T denominator)
+{
+	if (denominator == 0) {
+		return 0;
+	}
+	
+	return numerator / denominator;
+}
+
+#endif // MULDIV_H

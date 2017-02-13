@@ -1,0 +1,103 @@
+#pragma once
+
+template<typename T>
+class Singleton
+{
+	static T*	self_;
+	static int	refcount_;
+
+protected:
+	Singleton() {};
+	virtual ~Singleton() { self_ = 0; }
+
+public:
+	static T* Instance()
+	{
+		if( !self_ )
+			self_ = new T;
+		refcount_++;
+		return self_;
+	}
+
+	void FreeInstance()
+	{
+		if( --refcount_ == 0 )
+			delete this;
+	}
+};
+
+template<typename T> T* Singleton<T>::self_ = 0;
+template<typename T> int Singleton<T>::refcount_ = 0;
+
+
+
+// Вспомогательный шаблон, который проверяет,
+// является ли тип-кандидат D производным от B.
+template<typename D, typename B>
+class IsDerivedFrom
+{
+	class No { };
+	class Yes { No no[2]; };
+	static Yes Test(B*);	// объявлена, но не определена
+	static No  Test(...);	// объявлена, но не определена
+
+	static void constraints(D* p) {
+		B* pb = p;
+	}
+
+public:
+	enum {
+		// В процессе компиляции происходит разрешение перегрузки Test().
+		// Если D* может быть преобразована в B*, то будет выбрана Test(B*),
+		// иначе будет выбрана Test(...), возвращающая No.
+		Is = sizeof(Test(static_cast<D*>(0))) == sizeof(Yes)
+	};
+
+	IsDerivedFrom() {
+		void(*p)(D*) = constraints;
+	}
+};
+
+
+
+
+// Автоматический указатель на объект Singleton
+// Требуется, чтобы T был производным от Singleton
+// Использование IsDerivedFrom для гарантии порождения от Singleton
+template<typename T>
+class SingletonPtr
+{
+public:
+	SingletonPtr() {
+		ptr_ = T::Instance();
+	}
+
+	~SingletonPtr() {
+		// используем деструктор, чтобы не вносить код в каждый из конструкторов
+		Q_ASSERT( validateRequirements() );
+		ptr_->FreeInstance();
+	}
+	
+	T *operator->() const {
+		return ptr_;
+	}
+
+private:
+
+	bool validateRequirements() const
+	{
+		// typedef необходим, поскольку иначе запятая в описании типа будет
+		// воспринята как разделитель параметров макроса assert
+		typedef IsDerivedFrom<T, Singleton<T>> Y;
+		// проверка времени выполнения, которая легко может
+		// быть преобразована в проверку времени компиляции
+		Q_ASSERT( Y::Is );
+		
+		// точное требование наличия нестатической функции-члена
+		void (T::*test2)() = &T::FreeInstance;
+		
+		return true;
+	}
+	
+	T * ptr_;
+};

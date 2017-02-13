@@ -1,0 +1,101 @@
+#include "datawnd.h"
+#include <QtGui/QStylePainter>
+#include <QtGui/QResizeEvent>
+
+DataWnd::DataWnd(int index, QWidget *parent)
+:	QWidget(parent),
+	m_curve(new DataCurve(index))
+{
+	setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+	setFocusPolicy(Qt::StrongFocus);
+
+	m_layout = new QHBoxLayout();
+
+	Scale::UnitList scales;
+	scales.push_back(Scale::UnitList::value_type("0.25",	"125 мк¬"));
+	scales.push_back(Scale::UnitList::value_type("0.5",		"250 мк¬"));
+	scales.push_back(Scale::UnitList::value_type("1.0",		"500 мк¬"));
+	scales.push_back(Scale::UnitList::value_type("2.0",		"1 м¬"));
+	scales.push_back(Scale::UnitList::value_type("4.0",		"2 м¬"));
+	scales.push_back(Scale::UnitList::value_type("10.0",	"5 м¬"));
+	const int startIndex = 4;
+	m_scale = new ScaleWnd(index, scales, startIndex);
+	m_scale->setWindowTitle(m_scale->windowTitle().trimmed() + tr(", м¬"));
+
+	m_view = new QWidget();
+	m_layout->addWidget(m_scale);
+	m_layout->addWidget(m_view);
+	m_layout->setContentsMargins(0, 0, 0, 0);
+	m_layout->setSpacing(0);
+	setLayout(m_layout);
+
+	m_view->installEventFilter(this);
+	setScale(*(scales.begin() + startIndex));
+	connect(m_scale, SIGNAL(scaleChanged(Scale::Unit)), this, SLOT(setScale(Scale::Unit)));
+}
+
+DataWnd::~DataWnd()
+{
+	delete m_curve;
+}
+
+/*!
+	«адает идеальный минимальный размер виджета
+*/
+QSize DataWnd::minimumSizeHint() const
+{
+	return QSize(500, 80);
+}
+
+/*!
+	”станавливает идеальный размер виджета
+*/
+QSize DataWnd::sizeHint() const
+{
+	return QSize(1000, 90);
+}
+
+void DataWnd::setScale(const Scale::Unit &scale)
+{
+	m_curve->setZoom(scale.first.toDouble());
+	m_view->update();
+}
+
+bool DataWnd::eventFilter(QObject *target, QEvent *e)
+{
+	bool needUpdate = false;
+	if (target == m_view && e->type() == QEvent::Paint)
+	{
+		needUpdate = true;
+	}
+
+	bool res = QWidget::eventFilter(target, e);
+
+	if (needUpdate)
+	{
+		onPaintView();
+	}
+
+	return res;
+}
+
+void DataWnd::onPaintView()
+{
+	m_pixmap = QPixmap(size());
+	m_pixmap.fill(m_view, 0, 0);
+	QPainter painter(&m_pixmap);
+	painter.initFrom(m_view);
+
+	EnvironmentPtr pEnv;
+	m_curve->setSampleCount(pEnv->samplePerScreen());
+	m_curve->setSampleStart(pEnv->currentSample());
+
+	ColorScheme cs = pEnv->colorScheme(m_curve->index());
+	painter.fillRect(m_view->rect(), cs.second);
+	painter.setPen(cs.first);
+
+	m_curve->draw(&painter, m_view->rect());
+
+	QStylePainter stylePainter(m_view);
+	stylePainter.drawPixmap(0, 0, m_pixmap);
+}

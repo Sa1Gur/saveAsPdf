@@ -1,0 +1,16 @@
+#ifndef PULSE_H
+#define PULSE_H
+
+#include "main/environment.h"
+#include "trend.h"
+
+class Pulse: public Trend
+{
+public:
+	Pulse(const QString &title, const QColor &color);
+	~Pulse();
+
+	friend class Spo2;
+};
+
+#endif // PULSE_H

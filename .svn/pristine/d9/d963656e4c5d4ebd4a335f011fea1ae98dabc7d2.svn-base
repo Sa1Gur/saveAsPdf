@@ -1,0 +1,32 @@
+#include "muldiv.h"
+
+template <>
+int muldiv(int number, int numerator, int denominator)
+{
+	/*int res = 0;//Неправильный assemblerный код - при отрицательных числах врет - выдает res = numerator
+
+	__try {
+		_asm  {
+			mov   eax, number
+			mov   edx, numerator
+			mul   edx
+			mov   ebx, denominator
+			div   ebx
+			mov   res, eax
+		}
+	}
+	__except (1) { // EXCEPTION_EXECUTE_HANDLER
+		return 0;
+	}*/
+	int res = number * numerator;
+	res /= denominator;
+	return res;
+}
+
+template <>
+double muldiv(double number, double numerator, double denominator)
+{
+	double res = number * numerator;
+	res /= denominator;
+	return res;
+}

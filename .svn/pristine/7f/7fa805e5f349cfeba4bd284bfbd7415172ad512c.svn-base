@@ -1,0 +1,659 @@
+#include <QtGui/QKeyEvent>
+#include <QtCore/QVectorIterator>
+#include <QtCore/QSettings>
+#include <QtGui/QMessageBox>
+#include <QtCore/QProcess>
+#include <QtGui/QSplitter>
+#include "mainwnd.h"
+#include "revision.h"
+#include "widgets/datawnd.h"
+#include "widgets/spo2wnd.h"
+#include "widgets/pulsewnd.h"
+#include "widgets/cannwnd.h"
+#include "widgets/redwnd.h"
+#include "widgets/trendwnd.h"
+#include "widgets/bodypositioncolorwnd.h"
+#include "forms/settings.h"
+#include "forms/episodes.h"
+#include "forms/basics.h"
+#include "trends/trends.h"
+#include "trends/position.h"
+#include "forms/report.h"
+#include "forms/trending.h"
+#include "forms/conclusion.h"
+#include "forms/colors.h"
+#include "forms/templates.h"
+#include "forms/channels.h"
+#include "forms/PrintScreen.h"
+#include "forms/ApplicationData.h"
+
+#include <windows.h>//for windows messages
+extern UINT	HWM_CHANGETIME;
+//UINT	HWM_CHANGETIME = RegisterWindowMessageA("HWM_CHANGETIME");
+
+MainWnd::MainWnd(QWidget *parent, Qt::WFlags flags)
+: QMainWindow(parent, flags)
+{
+	ui.setupUi(this);
+	ui.actionMarkMode->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_M));
+	
+	EnvironmentPtr pEnv;
+	setWindowTitle(windowTitle() + pEnv->patientName());
+
+	ui.actionHolter->setEnabled(pEnv->testOption(FullMode));
+		
+	scales.push_back(ONE_SEC);
+	scales.push_back(TWO_SEC);
+	scales.push_back(FOUR_SEC);
+	scales.push_back(EIGHT_SEC);
+	scales.push_back(SIXTEEN_SEC);
+	scales.push_back(FORTY_SEC);
+	scales.push_back(ONE_MIN);
+	scales.push_back(TWO_MIN);
+	scales.push_back(TEN_MIN);
+
+	currentScale = scales.begin() + 6;
+	pEnv->setScreenTime(*currentScale);
+
+	mainLayout			= new QVBoxLayout();
+	episodeTypeLayout	= new QVBoxLayout();
+	trendWnd			= new TrendWnd();
+	splitter			= new QSplitter(Qt::Vertical);
+	mainLayout->addWidget(splitter);
+	splitter->addWidget(trendWnd);
+
+	connect(trendWnd, SIGNAL(positionChanged()), this, SLOT(updateView()));
+
+	dataWnd.push_back(new DataWnd(Rt));
+	dataWnd.push_back(new DataWnd(Eeg4));
+	dataWnd.push_back(new DataWnd(Eeg3));
+	dataWnd.push_back(new DataWnd(Eeg2));
+	dataWnd.push_back(new DataWnd(Eeg1));
+	dataWnd.push_back(new DataWnd(Okg2));
+	dataWnd.push_back(new DataWnd(Okg1));
+	dataWnd.push_back(new DataWnd(Emg2));
+	dataWnd.push_back(new DataWnd(Emg1));
+	dataWnd.push_back(new DataWnd(Rsp2));
+	dataWnd.push_back(new DataWnd(Rsp1));
+	dataWnd.push_back(new DataWnd(Diff));
+	dataWnd.push_back(new DataWnd(Z));
+	dataWnd.push_back(new DataWnd(Y));
+	dataWnd.push_back(new DataWnd(X));
+	dataWnd.push_back(new DataWnd(Mic));
+	dataWnd.push_back(new CannWnd());
+	dataWnd.push_back(new DataWnd(Nois));
+	
+	if (pEnv->testOption(ShowRed))
+	{
+		dataWnd.push_back(new RedWnd(Red));//DataWnd(Red));
+	}
+	else
+	{
+		dataWnd.push_back(new Spo2Wnd(Red));
+	}	
+		
+	if (pEnv->testOption(ShowIr))
+	{
+		//dataWnd.push_back(new RedWnd());//Debug//
+		dataWnd.push_back(new DataWnd(Ir));
+	}
+	else
+	{
+		dataWnd.push_back(new PulseWnd());
+	}
+	
+	dataWnd.push_back(new DataWnd(I));
+	dataWnd.push_back(new DataWnd(II));
+	dataWnd.push_back(new DataWnd(III));
+	dataWnd.push_back(new DataWnd(avR));
+	dataWnd.push_back(new DataWnd(avL));
+	dataWnd.push_back(new DataWnd(avF));
+	dataWnd.push_back(new DataWnd(v1));
+	dataWnd.push_back(new DataWnd(v2));
+	dataWnd.push_back(new DataWnd(v3));
+	dataWnd.push_back(new DataWnd(v4));
+	dataWnd.push_back(new DataWnd(v5));
+	dataWnd.push_back(new DataWnd(v6));
+
+	for (int w = 0; w < dataWnd.size(); w++)
+	{
+		connect(this,		SIGNAL(preUpdateView()),	dataWnd[w], SLOT(clearEpisodes()));
+		connect(this,		SIGNAL(postUpdateView()),	dataWnd[w], SLOT(placeEpisodes()));
+		connect(this,		SIGNAL(scale4Change(int)),	dataWnd[w],	SLOT(scale_Change(int)));
+		connect(dataWnd[w], SIGNAL(doUpdateView()),		this,		SLOT(updateView()));
+		connect(dataWnd[w], SIGNAL(delEp(Episode)),		this,		SLOT(deleteEpisode(Episode)));
+	}
+
+	for (int i = Rt; i < MaxData; ++i)
+	{
+		splitter->addWidget(dataWnd[i]);
+	}
+
+	timeWnd = new TimeWnd();
+	splitter->addWidget(timeWnd);
+	ui.centralWidget->setLayout(mainLayout);
+
+	readSettings();
+
+	int index = 0;
+
+#ifdef _DEBUG
+	//-------отладочная информация--------
+	dbgComboBox = new QComboBox();
+	ui.statusBar->insertPermanentWidget(index++, dbgComboBox);
+	
+	QWidget *dbgWidget = new QWidget();
+	currentSecond = new QLabel();
+	currentSample = new QLabel();
+	QVBoxLayout *dbgLayout = new QVBoxLayout(dbgWidget);
+	dbgLayout->addWidget(currentSecond);
+	dbgLayout->addWidget(currentSample);
+	
+	ui.statusBar->insertPermanentWidget(index++, dbgWidget);
+	//------------------------------------
+#endif
+
+	//-------текущее состояние SpO2-------
+	QWidget *spo2Status = new QWidget();
+	QLabel *spo2Icon = new QLabel();
+	spo2Icon->setPixmap(QPixmap(":/MainWnd/spo2.png"));
+	spo2Value = new QLabel();
+	QHBoxLayout *layoutSpo2 = new QHBoxLayout(spo2Status);
+	layoutSpo2->addWidget(spo2Icon);
+	layoutSpo2->addWidget(spo2Value);
+	ui.statusBar->insertPermanentWidget(index++, spo2Status);
+	//------------------------------------
+
+	//-------текущее состояние пульса-------
+	QWidget *pulseStatus = new QWidget();
+	QLabel *pulseIcon = new QLabel();
+	pulseIcon->setPixmap(QPixmap(":/MainWnd/heart.png"));
+	pulseValue = new QLabel();
+	QHBoxLayout *layoutPulse = new QHBoxLayout(pulseStatus);
+	layoutPulse->addWidget(pulseIcon);
+	layoutPulse->addWidget(pulseValue);
+	ui.statusBar->insertPermanentWidget(index++, pulseStatus);
+	//--------------------------------------
+
+	//-------частота дыхания-------
+	QWidget *respStatus = new QWidget();
+	QLabel *respIcon = new QLabel();
+	respIcon->setPixmap(QPixmap(":/MainWnd/cann.png"));
+	respValue = new QLabel();
+	QHBoxLayout *layoutResp = new QHBoxLayout(respStatus);
+	layoutResp->addWidget(respIcon);
+	layoutResp->addWidget(respValue);
+	ui.statusBar->insertPermanentWidget(index++, respStatus);
+	//-----------------------------
+
+	//-------текущий режим-------
+	QWidget *modeStatus = new QWidget();
+	modeIcon = new QLabel();
+	modeText = new QLabel();
+	if (pEnv->testOption(MarkMode))
+	{
+		modeIcon->setPixmap(QPixmap(":/MainWnd/mark.png"));
+		modeText->setText(tr("Режим отметки событий"));
+		ui.actionMarkMode->setChecked(true);
+	}
+	else
+	{
+		modeIcon->setPixmap(QPixmap(":/MainWnd/view.png"));
+		modeText->setText(tr("Режим просмотра"));
+		ui.actionMarkMode->setChecked(false);
+	}
+	QHBoxLayout *layoutMode = new QHBoxLayout(modeStatus);
+	layoutMode->addWidget(modeIcon);
+	layoutMode->addWidget(modeText);
+	ui.statusBar->insertPermanentWidget(index++, modeStatus);
+	//---------------------------
+
+	//-------стартовое время текущего экрана-------
+	QWidget *startStatus = new QWidget();
+	QLabel *startIcon = new QLabel();
+	startIcon->setPixmap(QPixmap(":/MainWnd/clock.png"));
+	startValue = new QLabel();
+	QHBoxLayout *layoutStart = new QHBoxLayout(startStatus);
+	layoutStart->addWidget(startIcon);
+	layoutStart->addWidget(startValue);
+	ui.statusBar->insertPermanentWidget(index++, startStatus);
+	//---------------------------------------------
+
+	//-------времени на экране-------
+	QWidget *screenStatus = new QWidget();
+	QLabel *screenIcon = new QLabel();
+	screenIcon->setPixmap(QPixmap(":/MainWnd/screen.png"));
+	screenValue = new QLabel();
+	QHBoxLayout *layoutScreen = new QHBoxLayout(screenStatus);
+	layoutScreen->addWidget(screenIcon);
+	layoutScreen->addWidget(screenValue);
+	ui.statusBar->insertPermanentWidget(index++, screenStatus);
+	//-------------------------------
+
+	//-------цветовые обозначения положения тела-------
+	ui.mainToolBar->addWidget(new BodyPositionColorWidget());	
+	//-----------
+
+	updateView();
+}
+
+MainWnd::~MainWnd()
+{
+	writeSettings();
+
+	delete trendWnd;
+	delete timeWnd;
+	qDeleteAll(dataWnd.begin(), dataWnd.end());
+	delete splitter;
+	delete mainLayout;
+	delete episodeTypeLayout;
+}
+
+void MainWnd::compressView()
+{
+	if ((currentScale + 1) < scales.end())
+	{
+		EnvironmentPtr pEnv;
+		++currentScale;
+		pEnv->setScreenTime(*currentScale);
+		updateView();
+
+		if (!ui.actionExpandView->isEnabled())
+		{
+			ui.actionExpandView->setDisabled(false);
+		}
+
+		if ((currentScale + 1) == scales.end())
+		{
+			ui.actionCompressView->setDisabled(true);
+		}
+	}
+}
+
+void MainWnd::expandView()
+{
+	if ((currentScale - 1) >= scales.begin())
+	{
+		EnvironmentPtr pEnv;
+		--currentScale;
+		pEnv->setScreenTime(*currentScale);
+		updateView();
+
+		if (!ui.actionCompressView->isEnabled())
+		{
+			ui.actionCompressView->setDisabled(false);
+		}
+
+		if (currentScale == scales.begin())
+		{
+			ui.actionExpandView->setDisabled(true);
+		}
+	}
+}
+
+void MainWnd::compressTrend()
+{
+	if (TrendWnd* trend = dynamic_cast<TrendWnd *>(trendWnd))
+	{
+		trend->compress(ui.actionCompressTrend);
+		ui.actionExpandTrend->setDisabled(false);
+	}
+}
+
+void MainWnd::expandTrend()
+{
+	if (TrendWnd* trend = dynamic_cast<TrendWnd *>(trendWnd))
+	{
+		trend->expand(ui.actionExpandTrend);
+		ui.actionCompressTrend->setDisabled(false);
+	}
+}
+
+void MainWnd::settingsDlg()
+{
+	SettingsDlg *dlg = new SettingsDlg(this);
+	connect(dlg, SIGNAL(update()),	this, SLOT(updateView()));
+	dlg->exec();
+	delete dlg;
+}
+
+void MainWnd::episodesDlg()
+{
+	EpisodesDlg *dlg = new EpisodesDlg(this);
+	connect(dlg, SIGNAL(positionChanged()),	this, SLOT(updateView()));
+	connect(dlg, SIGNAL(episodeRemoved()),	this, SLOT(updateView()));
+	dlg->exec();
+	disconnect(dlg);
+	delete dlg;
+}
+
+void MainWnd::markBasicEvents()
+{
+	BasicsDlg *dlg = new BasicsDlg(this);
+	dlg->show();
+	dlg->raise();
+	dlg->activateWindow();
+}
+
+void MainWnd::callHolter()
+{
+	EnvironmentPtr pEnv;
+	pEnv->setNextApp(HolterCode);
+	close();
+}
+
+void MainWnd::callDatabase()
+{
+	EnvironmentPtr pEnv;
+	pEnv->setNextApp(DatabaseCode);
+	close();
+}
+
+void MainWnd::callReader()
+{
+	/*QMessageBox msgBox;
+	msgBox.setIcon(QMessageBox::Question);
+	msgBox.setText(tr("Выберите тип регистратора:"));
+	QPushButton *standart		= msgBox.addButton(tr("Полисомнограф"),		QMessageBox::ActionRole),
+				*screening		= msgBox.addButton(tr("Скрининговый"),		QMessageBox::ActionRole),
+				*cancelButton	= msgBox.addButton(QMessageBox::Cancel);
+	
+	msgBox.exec();
+	*/
+	EnvironmentPtr pEnv;
+	//if (msgBox.clickedButton() == standart)
+	{
+		pEnv->setNextApp(ReadCode);
+	}
+	/*else if (msgBox.clickedButton() == screening)
+	{
+		pEnv->setNextApp(ExitCode);
+		QProcess::startDetached("sread.exe");
+	}
+	else
+	{
+		return;
+	}*/
+	
+	close();
+}
+
+void MainWnd::appClose()
+{
+	EnvironmentPtr pEnv;
+	pEnv->setNextApp(ExitCode);
+	close();
+}
+
+void MainWnd::turnMarkMode()
+{
+	EnvironmentPtr pEnv;
+	pEnv->setOption(MarkMode, !pEnv->testOption(MarkMode));
+	if (pEnv->testOption(MarkMode))
+	{
+		modeIcon->setPixmap(QPixmap(":/MainWnd/mark.png"));
+		modeText->setText(tr("Режим отметки событий"));
+	}
+	else
+	{
+		modeIcon->setPixmap(QPixmap(":/MainWnd/view.png"));
+		modeText->setText(tr("Режим просмотра"));
+	}
+	updateView();
+}
+
+void MainWnd::reportDlg()
+{
+	ReportDlg *dlg = new ReportDlg(this);
+	dlg->exec();
+	delete dlg;
+}
+
+void MainWnd::aboutDlg()
+{
+	QString msg;
+	msg += tr("О программе:\n\n");
+	msg += tr("ЗАО \"Медитек\", Россия\n");
+	msg += tr(REVISION);
+	msg += tr("Все права защищены.");
+
+	QMessageBox::information(this, windowTitle(), msg);
+}
+
+void MainWnd::closeEvent(QCloseEvent *e)
+{
+	if (e->spontaneous())
+	{
+		//
+		// приложение закрывается системой (Alt+F4, крестик и т.д.)
+		//
+		EnvironmentPtr pEnv;
+		pEnv->setNextApp(ExitCode);
+		e->accept();
+	}
+	else
+	{
+		//
+		// Exit Code уже установлен в одном из обработчиков событий
+		//
+		e->accept();
+	}
+}
+
+void MainWnd::keyPressEvent(QKeyEvent *e)
+{
+	EnvironmentPtr pEnv;
+
+	switch (e->key())
+	{
+	case Qt::Key_Left:
+		if (QApplication::keyboardModifiers().testFlag(Qt::ControlModifier))//Alowes user  to choose scroll speed
+			pEnv->setCurrentSample(pEnv->currentSample() - pEnv->sec2sample(1));
+		else
+			pEnv->setCurrentSample(pEnv->currentSample() - pEnv->samplePerScreen());
+		updateView();
+		break;
+
+	case Qt::Key_Right:
+		if (QApplication::keyboardModifiers().testFlag(Qt::ControlModifier))//Alowes user  to choose scroll speed
+			pEnv->setCurrentSample(pEnv->currentSample() + pEnv->sec2sample(1));
+		else
+			pEnv->setCurrentSample(pEnv->currentSample() + pEnv->samplePerScreen());
+		updateView();
+		break;
+
+	case Qt::Key_Down:
+		emit scale4Change(-1);
+		//dataWnd[1]->hide();
+		//dataWnd[2]->hide();
+		break;
+
+	case Qt::Key_Up:
+		emit scale4Change(1);
+		//dataWnd[1]->show();
+		//dataWnd[2]->show();
+		break;
+
+	case Qt::Key_F2:
+		applicationData();
+		break;
+
+	default:
+		QWidget::keyPressEvent(e);
+		break;
+	}
+}
+
+//Alowes user  to scroll slowly througth data +-sec
+void MainWnd::wheelEvent(QWheelEvent *e)
+{
+	EnvironmentPtr pEnv;
+	if (e->delta() > 0)
+	{
+		pEnv->setCurrentSample(pEnv->currentSample() - pEnv->sec2sample(1));
+		updateView();
+	}
+	else if (e->delta() < 0)
+	{
+		pEnv->setCurrentSample(pEnv->currentSample() + pEnv->sec2sample(1));
+		updateView();
+	}
+}
+
+bool MainWnd::winEvent(MSG * message, long * result)// at Qt 5 suppressed by nativeEvent()
+{
+	if (message->message == HWM_CHANGETIME)
+	{
+		EnvironmentPtr pEnv;
+		pEnv->setCurrentSample(message->lParam);
+		updateView();
+    }
+    return false;
+}
+
+void MainWnd::writeSettings()
+{
+	QSettings settings;
+	settings.beginGroup("mainWindow");
+	settings.setValue("geometry", saveGeometry());
+	settings.setValue("splitter", splitter->saveState());
+	settings.endGroup();
+}
+
+void MainWnd::readSettings()
+{
+	QSettings settings;
+	settings.beginGroup("mainWindow");
+	restoreGeometry(settings.value("geometry").toByteArray());
+	splitter->restoreState(settings.value("splitter").toByteArray());
+	settings.endGroup();
+}
+
+void MainWnd::updateView()
+{
+	EnvironmentPtr pEnv;
+	for (int i = Rt; i < MaxData; ++i)
+	{
+		dataWnd[i]->setVisible(pEnv->isVisible(static_cast<DataIndex>(i)));
+	}
+
+	emit preUpdateView();
+
+	timeWnd->update();
+
+	QListIterator<QWidget *> i(dataWnd);
+	while (i.hasNext())
+	{
+		i.next()->update();
+	}
+
+	trendWnd->update();
+
+	TrendsPtr trends;
+
+#ifdef _DEBUG
+	dbgComboBox->clear();
+	for (int i = Rt; i < MaxData; i++)
+	{
+		DataIndex index = static_cast<DataIndex>(i);
+		if (pEnv->isVisible(index))
+		{
+			RawData			rdata(2);
+			double			mv = pEnv->load(index, pEnv->currentSample(), rdata);		
+			QString *currentData_ = new QString(pEnv->channelTitle(index) + QString(":%1").arg(rdata[0]));
+			dbgComboBox->addItem(*currentData_);
+		}
+	}
+			
+	currentSecond->setText(QString("%1 sec").arg(pEnv->currentSecond()));
+	currentSample->setText(QString("%1 s").arg(pEnv->currentSample()));
+#endif
+
+	if (Trend *spo2 = trends->trends()[SPO2])
+	{
+		if (pEnv->currentSecond() < spo2->values().size())
+		{
+			spo2Value->setText(QString("%1 %").arg(spo2->values().at(pEnv->currentSecond())));
+		}
+	}
+
+	if (Trend *pulse = trends->trends()[PULSE])
+	{
+		if (pEnv->currentSecond() < pulse->values().size())
+		{
+			pulseValue->setText(tr("%1 1/мин").arg(pulse->values().at(pEnv->currentSecond())));
+		}
+	}
+
+	if (Trend *resp = trends->trends().at(CANN))
+	{
+		if (pEnv->currentSecond() < resp->values().size())
+		{
+			respValue->setText(tr("%1 1/мин").arg(resp->values().at(pEnv->currentSecond())));
+		}
+	}
+	
+	QDateTime time(pEnv->sample2NativTime(pEnv->currentSample()));
+	startValue->setText(time.toString());
+
+	screenValue->setText(QTime().addMSecs(pEnv->msecsPerScreen()).toString());
+
+	emit postUpdateView();
+}
+
+void MainWnd::trendingDlg()
+{
+	TrendingDlg dlg(this);
+	dlg.exec();
+}
+
+void MainWnd::conclusionDlg()
+{
+	ConclusionDlg dlg(this);
+	dlg.exec();
+}
+
+void MainWnd::colorsDlg()
+{
+	ColorsDlg dlg(this);
+	dlg.exec();
+	updateView();
+}
+
+void MainWnd::templatesDlg()
+{
+	TemplatesDlg dlg(this);
+	dlg.exec();
+}
+
+void MainWnd::channelsDlg()
+{
+	ChannelsDlg dlg(this);
+	int result = dlg.exec();
+	if (result == QDialog::Accepted)
+	{
+		updateView();
+	}
+}
+
+void MainWnd::printTrends()
+{
+}
+
+void MainWnd::printScreen()
+{
+	PrintScreenDlg dlg(this);
+	dlg.exec();
+}
+
+void MainWnd::applicationData()
+{
+	ApplicationDataDlg dlg(this);
+	dlg.exec();
+}
+
+void MainWnd::deleteEpisode(Episode episode)
+{
+	//episode.remove();
+	updateView();
+}

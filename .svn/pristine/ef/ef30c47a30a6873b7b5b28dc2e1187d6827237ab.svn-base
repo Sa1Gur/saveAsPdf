@@ -1,0 +1,30 @@
+#ifndef CONCLUSION_H
+#define CONCLUSION_H
+
+#include "ui_editor.h"
+#include "report.h"
+
+class ConclusionDlg: public QDialog, public Ui::EditorForm
+{
+	Q_OBJECT
+
+public:
+	ConclusionDlg(QWidget *parent = 0);
+
+	bool load();
+	void closeEvent(QCloseEvent *e);
+
+public Q_SLOTS:
+	void load(const QString &filename);
+	void save();
+	void print();
+
+private:
+	Dreams			m_dreams;
+	Apneas			m_apneas;
+	Desaturations	m_desat;
+	Saturation		m_satur;
+	Pulse			m_pulse;	
+};
+
+#endif // CONCLUSION_H

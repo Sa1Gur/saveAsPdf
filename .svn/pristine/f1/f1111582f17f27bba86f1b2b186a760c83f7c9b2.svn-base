@@ -1,0 +1,174 @@
+#include "table.h"
+#include <QtGui/QPainter>
+
+TABLE_BEGIN
+
+Cell::Cell(const QString &text, const QFont &font, int flags, int width, int height, int border)
+:	m_text(text),
+	m_font(font),
+	m_flags(flags),
+	m_border(border),
+	m_width(width),
+	m_height(height)
+{
+}
+
+Cell::~Cell()
+{
+}
+
+void Cell::draw(QPainter *painter, const QRect &rect) const
+{
+	QFont font(painter->font());
+	painter->setFont(m_font);
+
+	if (m_border & BorderLeft)
+	{
+		painter->drawLine(rect.topLeft(), rect.bottomLeft());
+	}
+	
+	if (m_border & BorderTop)
+	{
+		painter->drawLine(rect.topLeft(), rect.topRight());
+	}
+
+	if (m_border & BorderRight)
+	{
+		painter->drawLine(rect.topRight(), rect.bottomRight());
+	}
+
+	if (m_border & BorderBottom)
+	{
+		painter->drawLine(rect.bottomRight(), rect.bottomLeft());
+	}
+
+	bool draw = true;	
+	
+	painter->drawText(rect, m_flags, m_text);
+
+	painter->setFont(font);
+}
+
+int Cell::width() const
+{
+	return m_width;
+}
+
+int Cell::height() const
+{
+	return m_height;
+}
+
+
+
+View::View(const QRect &rect)
+:	m_nCols(0),
+	m_nRows(0),
+	m_rect(rect)
+{
+}
+
+View::~View()
+{
+}
+
+void View::insert(const Table::Address &addr, const Table::Cell &cell)
+{
+	if (m_nCols == 0)
+	{
+		++m_nCols;
+	}
+	else if (m_nCols <= addr.first)
+	{
+		m_nCols = addr.first + 1;
+	}
+
+	if (m_nRows == 0)
+	{
+		++ m_nRows;
+	}
+	else if (m_nRows <= addr.second)
+	{
+		m_nRows = addr.second + 1;
+	}
+
+	m_cells.insert(addr, cell);
+}
+
+void View::draw(QPainter *painter) const
+{
+	Cells::const_iterator item = m_cells.begin();
+	while (item != m_cells.end())
+	{
+		int col = item.key().first;
+		int row = item.key().second;
+		
+		int cellWidth, cellLeftPos = m_rect.left();
+		
+		int widthPercentage = item->width();
+		if (widthPercentage == -1)
+		{
+			// set by default
+			cellWidth = m_rect.width() / m_nCols;
+			cellLeftPos = m_rect.left() + (cellWidth * col);
+		}
+		else
+		{
+			cellWidth = (m_rect.width() * widthPercentage) / 100;
+			Cells::const_iterator tempItem = m_cells.begin();
+			while (tempItem != item)
+			{
+				if (tempItem.key().second == row)
+				{
+					int tempPerc = tempItem->width();
+					if (tempPerc == -1)
+					{
+						// set by default
+						cellWidth = m_rect.width() / m_nCols;
+						cellLeftPos = m_rect.left() + (cellWidth * col);
+						break;
+					}
+					cellLeftPos += (m_rect.width() * tempPerc) / 100;
+				}
+				++tempItem;
+			}
+		}
+
+		int cellHeight, cellTopPos = m_rect.top();
+
+		int heightPercentage = item->height();
+		if (heightPercentage == -1)
+		{
+			// set by default
+			cellHeight = m_rect.height() / m_nRows;
+			cellTopPos = m_rect.top() + (cellHeight * row);
+		}
+		else
+		{
+			cellHeight = (m_rect.height() * heightPercentage) / 100;
+			Cells::const_iterator tempItem = m_cells.begin();
+			while (tempItem != item)
+			{
+				if (tempItem.key().first == col)
+				{
+					int tempPerc = tempItem->height();
+					if (tempPerc == -1)
+					{
+						// set by default
+						cellHeight = m_rect.height() / m_nRows;
+						cellTopPos = m_rect.top() + (cellHeight * row);
+						break;
+					}
+					cellTopPos += (m_rect.height() * tempPerc) / 100;
+				}
+				++tempItem;
+			}
+		}
+
+		item->draw(painter, QRect(cellLeftPos, m_rect.top() + (cellHeight * row), cellWidth, cellHeight));
+		
+		++item;
+	}
+}
+
+TABLE_END

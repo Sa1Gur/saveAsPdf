@@ -1,0 +1,1631 @@
+#include "report.h"
+
+#include <algorithm>
+#include <numeric>
+
+#include <QtGui/QResizeEvent>
+#include <QtGui/QPrintDialog>
+#include <QtGui/QPrintPreviewDialog>
+#include <QtGui/QPainter>
+#include <QtGui/QPrinter>
+#include <QtGui/QPaintEngine>
+#include <QtGui/QApplication>
+#include <QtGui/QDesktopWidget>
+#include <QtGui/QLabel>
+#include <QtGui/QStylePainter>
+#include <QtGui/QMessageBox>
+
+#include "main/environment.h"
+#include "main/episode.h"
+#include "misc/muldiv.h"
+#include "trends/trends.h"
+#include "trends/position.h"
+#include "misc/table.h"
+#include "misc/minmax.h"
+
+/*!
+	Получает все эпизоды сна из БД записи
+	и сохраняет их во внутреннюю структуру.
+*/
+Dreams::Dreams()
+{
+	QSqlQuery query;
+	query.prepare("SELECT * FROM episodes WHERE type = ?");
+	query.addBindValue(Episode::Dream);
+	query.exec();
+
+	while (query.next())
+	{
+		m_dreams.push_back(new Episode(query));
+	}
+}
+
+Dreams::~Dreams()
+{
+	qDeleteAll(m_dreams.begin(), m_dreams.end());
+}
+
+/*!
+	Возвращает true, если episode находится
+	в границах какого-либо из эпизодов сна.
+*/
+bool Dreams::contains(const Episode &episode) const
+{
+	foreach(Episode *dream, m_dreams)
+	{
+		if (dream->contains(episode))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/*!
+	Возвращает true, если секунда находится
+	в границах какого-либо из эпизодов сна.
+*/
+bool Dreams::contains(int second) const
+{
+	foreach(Episode *dream, m_dreams)
+	{
+		if (second >= dream->bsec() && second <= dream->esec())
+		{
+			return true;
+		}
+	}
+	
+	return false;
+}
+
+/*!
+	Возвращает длительность всех эпизодов сна (сек)
+*/
+int Dreams::length() const
+{
+	int result = 0;
+
+	foreach(Episode *dream, m_dreams)
+	{
+		result += dream->length();
+	}
+
+	return result;
+}
+
+/*!
+	Получает все эпизоды апноэ из БД записи
+	и предварительно подсчитывает статистику
+*/
+Apneas::Apneas(const Dreams &dreams)
+:	m_centrNum(0),
+	m_centrAvg(0),
+	m_centrMin(0),
+	m_centrMax(0),
+	m_obstrNum(0),
+	m_obstrAvg(0),
+	m_obstrMin(0),
+	m_obstrMax(0),
+	m_hypopNum(0),
+	m_hypopAvg(0),
+	m_hypopMin(0),
+	m_hypopMax(0),
+	m_dreamLen(dreams.length())
+{
+	QSqlQuery query;
+	query.prepare("SELECT * FROM episodes WHERE type BETWEEN ? AND ?");
+	query.addBindValue(Episode::Hypopnea);
+	query.addBindValue(Episode::ObstrApnea);
+	query.exec();
+
+	SortHelper<int> centrSort;
+	SortHelper<int> obstrSort;
+	SortHelper<int> hypopSort;
+
+	while (query.next())
+	{
+		Episode episode(query);
+
+		if (dreams.contains(episode))
+		{
+			switch (episode.type())
+			{
+			case Episode::Hypopnea:
+				++m_hypopNum;
+				m_hypopAvg += episode.length();
+				hypopSort(episode.length());
+				break;
+			
+			case Episode::CentrApnea:
+				++m_centrNum;
+				m_centrAvg += episode.length();
+				centrSort(episode.length());
+				break;
+			
+			case Episode::ObstrApnea:
+				++m_obstrNum;
+				m_obstrAvg += episode.length();
+				obstrSort(episode.length());
+				break;
+			}
+		}
+	}
+
+	m_centrMin = centrSort.minVal();
+	m_centrMax = centrSort.maxVal();
+	m_centrAvg = safeDiv(m_centrAvg, m_centrNum);
+	m_obstrMin = obstrSort.minVal();
+	m_obstrMax = obstrSort.maxVal();
+	m_obstrAvg = safeDiv(m_obstrAvg, m_obstrNum);
+	m_hypopMin = hypopSort.minVal();
+	m_hypopMax = hypopSort.maxVal();
+	m_hypopAvg = safeDiv(m_hypopAvg, m_hypopNum);
+
+	EnvironmentPtr pEnv;
+	if (!pEnv->testOption(FullMode))
+	{
+		m_centrNum = 0;
+		m_centrAvg = 0;
+		m_centrMin = 0;
+		m_centrMax = 0;
+	}
+}
+
+/*!
+	Возвращает количество эпизодов апноэ заданного типа
+*/
+int Apneas::num(int which) const
+{
+	switch (which)
+	{
+	case Episode::CentrApnea:
+		return m_centrNum;
+
+	case Episode::ObstrApnea:
+		return m_obstrNum;
+
+	case Episode::Hypopnea:
+		return m_hypopNum;
+
+	case Episode::All:
+		return (m_centrNum + m_obstrNum + m_hypopNum);
+
+	default:
+		return 0;
+	}
+}
+
+/*!
+	Возвращает среднюю продолжительность эпизода апноэ заданного типа
+*/
+int Apneas::avg(int which) const
+{
+	switch (which)
+	{
+	case Episode::CentrApnea:
+		return m_centrAvg;
+
+	case Episode::ObstrApnea:
+		return m_obstrAvg;
+
+	case Episode::Hypopnea:
+		return m_hypopAvg;
+
+	case Episode::All:
+		return safeDiv(m_centrAvg * m_centrNum + m_obstrAvg * m_obstrNum + m_hypopAvg * m_hypopNum,	num(Episode::All));
+
+	default:
+		return 0;
+	}
+}
+
+/*!
+	Возвращает минимальную продолжительность эпизода апноэ заданного типа
+*/
+int Apneas::min(int which) const
+{
+	switch (which)
+	{
+	case Episode::CentrApnea:
+		return m_centrMin;
+
+	case Episode::ObstrApnea:
+		return m_obstrMin;
+
+	case Episode::Hypopnea:
+		return m_hypopMin;
+
+	case Episode::All:
+		return qMinNoFake(m_centrMin, qMinNoFake(m_obstrMin, m_hypopMin, 0), 0);
+
+	default:
+		return 0;
+	}
+}
+
+/*!
+	Возвращает максимальную продолжительность эпизода апноэ заданного типа
+*/
+int Apneas::max(int which) const
+{
+	switch (which)
+	{
+	case Episode::CentrApnea:
+		return m_centrMax;
+
+	case Episode::ObstrApnea:
+		return m_obstrMax;
+
+	case Episode::Hypopnea:
+		return m_hypopMax;
+
+	case Episode::All:
+		return qMax(m_centrMax, qMax(m_obstrMax, m_hypopMax));
+
+	default:
+		return 0;
+	}
+}
+
+/*!
+	Возвращает ИАГ для заданного типа апноэ
+*/
+qreal Apneas::ahi(int which) const
+{
+	switch (which)
+	{
+	case Episode::CentrApnea:
+		return safeDiv<qreal>(m_centrNum, m_dreamLen / 3600);
+
+	case Episode::ObstrApnea:
+		return safeDiv<qreal>(m_obstrNum, m_dreamLen / 3600);
+
+	case Episode::Hypopnea:
+		return safeDiv<qreal>(m_hypopNum, m_dreamLen / 3600);
+
+	case Episode::All:
+		return safeDiv<qreal>(num(Episode::All), m_dreamLen / 3600);
+
+	default:
+		return 0;
+	}
+}
+
+/*!
+	Получает все эпизоды десатурации из БД записи
+	и предварительно подсчитывает статистику
+*/
+Desaturations::Desaturations(const Dreams &dreams)
+:	m_num_2(0),
+	m_num_3(0),
+	m_num_4_9(0),
+	m_num_10_20(0),
+	m_numMore_20(0),
+	m_dreamsLen(dreams.length())
+{
+	QSqlQuery query;
+	query.prepare("SELECT * FROM episodes WHERE type = ?");
+	query.addBindValue(Episode::Desaturation);
+	query.exec();
+
+	while (query.next())
+	{
+		Episode episode(query);
+
+		if (dreams.contains(episode))
+		{
+			if (episode.diff() >= 1.5 && episode.diff() <= 2.499)
+			{
+				++m_num_2;
+			}
+			else if (episode.diff() >= 2.5 && episode.diff() <= 3.499)
+			{
+				++m_num_3;
+			}
+			else if (episode.diff() >= 3.5 && episode.diff() <= 9.499)
+			{
+				++m_num_4_9;
+			}
+			else if (episode.diff() >= 9.5 && episode.diff() <= 20.499)
+			{
+				++m_num_10_20;
+			}
+			else if (episode.diff() >= 20.5)
+			{
+				++m_numMore_20;
+			}
+		}
+	}
+}
+
+/*!
+	Возвращает количество эпизодов десатурации, в которых
+	величина падения сатурации составляет от from до to
+*/
+int Desaturations::num(int from, int to) const
+{
+	if (from == 2 && to == 2)
+	{
+		return m_num_2;
+	}
+	else if (from == 3 && to == 3)
+	{
+		return m_num_3;
+	}
+	else if (from == 4 && to == 9)
+	{
+		return m_num_4_9;
+	}
+	else if (from == 10 && to == 20)
+	{
+		return m_num_10_20;
+	}
+	else if (from == 20 && to > 20)
+	{
+		return m_numMore_20;
+	}
+	else if (from == 0 && to == 100)
+	{
+		return total();
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+/*!
+	Возвращает ODI для эпизодов десатурации, в которых
+	величина падения сатурации составляет от from до to
+*/
+qreal Desaturations::odi(int from, int to) const
+{
+	if (from == 2 && to == 2)
+	{
+		return safeDiv<qreal>(m_num_2, m_dreamsLen / 3600);
+	}
+	else if (from == 3 && to == 3)
+	{
+		return safeDiv<qreal>(m_num_3, m_dreamsLen / 3600);
+	}
+	else if (from == 4 && to == 9)
+	{
+		return safeDiv<qreal>(m_num_4_9, m_dreamsLen / 3600);
+	}
+	else if (from == 10 && to == 20)
+	{
+		return safeDiv<qreal>(m_num_10_20, m_dreamsLen / 3600);
+	}
+	else if (from == 20 && to > 20)
+	{
+		return safeDiv<qreal>(m_numMore_20, m_dreamsLen / 3600);
+	}
+	else if (from == 0 && to == 100)
+	{
+		return totalODI();
+	}
+	else {
+		return 0;
+	}
+}
+
+/*!
+	Возвращает общее количество десатураций
+*/
+int Desaturations::total() const
+{
+	return (m_num_2 + m_num_3 + m_num_4_9 + m_num_10_20 + m_numMore_20);
+}
+
+/*!
+	Возвращает общий индекс десатурации
+*/
+qreal Desaturations::totalODI() const
+{
+	return safeDiv<qreal>(total(), m_dreamsLen  / 3600);
+}
+
+/*!
+	
+*/
+Saturation::Saturation(const Dreams &dreams)
+{
+	reload(dreams);
+}
+
+void Saturation::reload(const Dreams &dreams)
+{
+	m_bdt.clear();
+	m_bdt.insert(qMakePair(95,	100),	0);
+	m_bdt.insert(qMakePair(90,	94),	0);
+	m_bdt.insert(qMakePair(85,	89),	0);
+	m_bdt.insert(qMakePair(80,	84),	0);
+	m_bdt.insert(qMakePair(75,	79),	0);
+	m_bdt.insert(qMakePair(70,	74),	0);
+	m_bdt.insert(qMakePair(65,	69),	0);
+	m_bdt.insert(qMakePair(60,	64),	0);
+	m_bdt.insert(qMakePair(55,	59),	0);
+	m_bdt.insert(qMakePair(50,	54),	0);
+	m_bdt.insert(qMakePair(0,	50),	0);
+
+	TrendsPtr trends;
+	if (Trend *spo2 = trends->trends().at(SPO2))
+	{
+		std::vector<int> wakeValues;
+		std::vector<int> sleepValues;
+
+		for (int i = 0; i < spo2->values().size(); ++i)
+		{
+			double val = spo2->values().at(i);
+			if (dreams.contains(i))
+			{
+				sleepValues.push_back(qRound(val));
+
+				if (val >= 94.5 && val <= 99.9)
+				{
+					++m_bdt[qMakePair(95, 100)];
+				}
+				else if (val >= 89.5 && val <= 94.499)
+				{
+					++m_bdt[qMakePair(90, 94)];
+				}
+				else if (val >= 84.5 && val <= 89.499)
+				{
+					++m_bdt[qMakePair(85, 89)];
+				}
+				else if (val >= 79.5 && val <= 84.499)
+				{
+					++m_bdt[qMakePair(80, 84)];
+				}
+				else if (val >= 74.5 && val <= 79.499)
+				{
+					++m_bdt[qMakePair(75, 79)];
+				}
+				else if (val >= 69.5 && val <= 74.499)
+				{
+					++m_bdt[qMakePair(70, 74)];
+				}
+				else if (val >= 64.5 && val <= 69.499)
+				{
+					++m_bdt[qMakePair(65, 69)];
+				}
+				else if (val >= 59.5 && val <= 64.499)
+				{
+					++m_bdt[qMakePair(60, 64)];
+				}
+				else if (val >= 54.5 && val <= 59.499)
+				{
+					++m_bdt[qMakePair(55, 59)];
+				}
+				else if (val >= 49.5 && val <= 54.499)
+				{
+					++m_bdt[qMakePair(50, 54)];
+				}
+				else if (val >= 0 && val <= 50.499)
+				{
+					++m_bdt[qMakePair(0, 50)];
+				}
+			}
+			else
+			{
+				wakeValues.push_back(qRound(val));
+			}
+		}
+
+		BreakdownTable::iterator iter = m_bdt.begin();
+		while (iter != m_bdt.end())
+		{
+			iter.value() /= 60.0;
+			++iter;
+		}
+		
+		wakeValues.erase(std::remove(wakeValues.begin(),	wakeValues.end(),	spo2->fakeValue()),	wakeValues.end());
+		sleepValues.erase(std::remove(sleepValues.begin(),	sleepValues.end(),	spo2->fakeValue()),	sleepValues.end());
+
+		m_base = safeDiv<int>(std::accumulate(wakeValues.begin(), wakeValues.end(), 0), wakeValues.size());
+
+		if (!sleepValues.empty())
+		{
+			m_avg = safeDiv<int>(std::accumulate(sleepValues.begin(), sleepValues.end(), 0), sleepValues.size());
+			m_min = *std::min_element(sleepValues.begin(), sleepValues.end());
+			m_max = *std::max_element(sleepValues.begin(), sleepValues.end());
+		}
+		else
+		{
+			m_avg = 0;
+			m_min = 0;
+			m_max = 0;
+		}
+	}
+}
+
+qreal Saturation::duration(int from, int to) const
+{
+	return m_bdt[qMakePair(from, to)];
+}
+
+int Saturation::base() const
+{
+	return m_base;
+}
+
+int Saturation::avg() const
+{
+	return m_avg;
+}
+
+int Saturation::min() const
+{
+	return m_min;
+}
+
+int Saturation::max() const
+{
+	return m_max;
+}
+
+Pulse::Pulse(const Dreams &dreams)
+{
+	reload(dreams);
+}
+
+void Pulse::reload(const Dreams &dreams)
+{
+	TrendsPtr trends;
+	if (Trend *pulse = trends->trends().at(PULSE))
+	{
+		std::vector<int> wakeValues;
+		std::vector<int> sleepValues;
+
+		for (int i = 0; i < pulse->values().size(); ++i)
+		{
+			double val = pulse->values().at(i);
+			if (dreams.contains(i))
+			{
+				sleepValues.push_back(qRound(val));				
+			}
+			else
+			{
+				wakeValues.push_back(qRound(val));
+			}
+		}
+
+		wakeValues.erase(std::remove(wakeValues.begin(),	wakeValues.end(),	pulse->fakeValue()),	wakeValues.end());
+		sleepValues.erase(std::remove(sleepValues.begin(),	sleepValues.end(),	pulse->fakeValue()),	sleepValues.end());
+
+		if (!sleepValues.empty())
+		{
+			m_avg = safeDiv<int>(std::accumulate(sleepValues.begin(), sleepValues.end(), 0), sleepValues.size());
+			m_min = *std::min_element(sleepValues.begin(), sleepValues.end());
+			m_max = *std::max_element(sleepValues.begin(), sleepValues.end());
+		}
+		else
+		{
+			m_avg = 0;
+			m_min = 0;
+			m_max = 0;
+		}
+	}
+}
+
+int Pulse::avg() const
+{
+	return m_avg;
+}
+
+int Pulse::min() const
+{
+	return m_min;
+}
+
+int Pulse::max() const
+{
+	return m_max;
+}
+
+void ReportDlg::editData(int i, int j)
+{
+	if ((i == 2) && (j == 0))//изменения касаются минимального значения Spo2
+	{
+		EnvironmentPtr	pEnv;
+		ReportParams	reportParams;
+		pEnv->reportParams(reportParams);
+		
+		if (m_satur.min() != tableWidget_4->item(2, 0)->text().toInt())
+		{
+			reportParams.minSpo2Local = tableWidget_4->item(2, 0)->text().toInt();
+			pEnv->setReportParams(reportParams);
+
+			QSplashScreen *splash = new QSplashScreen(this, QPixmap(":/MainWnd/logo.png"));
+			splash->show();
+	
+			TrendsPtr ptr;
+			ptr->recalculate(SPO2, splash);
+
+			splash->finish(this);
+			delete splash;
+
+			m_satur.reload(m_dreams);
+			tableWidget_4->setItem(0,  0, new QTableWidgetItem(QString("%1").arg(m_satur.avg())));
+			tableWidget_4->setItem(1,  0, new QTableWidgetItem(QString("%1").arg(m_satur.base())));
+			tableWidget_4->setItem(2,  0, new QTableWidgetItem(QString("%1").arg(m_satur.min())));
+			tableWidget_4->setItem(3,  0, new QTableWidgetItem(QString("%1").arg(m_satur.max())));
+		}
+	}
+
+	if ((i == 1) && (j == 0))//изменения касаются минимального значения пульса
+	{
+		EnvironmentPtr	pEnv;
+		ReportParams	reportParams;
+		pEnv->reportParams(reportParams);
+		
+		if (m_pulse.min() != tableWidget_Pulse->item(1, 0)->text().toInt())
+		{
+			reportParams.minPulseLocal = tableWidget_Pulse->item(1, 0)->text().toInt();
+			pEnv->setReportParams(reportParams);
+
+			QSplashScreen *splash = new QSplashScreen(this, QPixmap(":/MainWnd/logo.png"));
+			splash->show();
+	
+			TrendsPtr ptr;
+			ptr->recalculate(SPO2, splash);
+
+			splash->finish(this);
+			delete splash;
+
+			m_pulse.reload(m_dreams);
+			tableWidget_Pulse->setItem(0,  0, new QTableWidgetItem(QString("%1").arg(m_pulse.avg())));
+			tableWidget_Pulse->setItem(1,  0, new QTableWidgetItem(QString("%1").arg(m_pulse.min())));
+			tableWidget_Pulse->setItem(2,  0, new QTableWidgetItem(QString("%1").arg(m_pulse.max())));
+		}
+	}
+}
+
+ReportDlg::ReportDlg(QWidget *parent)
+:	QDialog(parent),
+	m_printer(new QPrinter),
+	m_apneas(m_dreams),
+	m_desat(m_dreams),
+	m_satur(m_dreams),
+	m_pulse(m_dreams)
+{
+	setupUi(this);
+	setWindowFlags(Qt::Window | Qt::WindowContextHelpButtonHint | Qt::WindowMinMaxButtonsHint);
+	installEventFilter(this);
+		
+	int	logX			= QImage(1, 1, QImage::Format_ARGB32).physicalDpiX() * 10,
+		logY			= QImage(1, 1, QImage::Format_ARGB32).physicalDpiY() * 10;
+	m_apnoeHistogramm	= new QImage(muldiv(1900, logX, 254), muldiv(350, logY, 254), QImage::Format_ARGB32_Premultiplied);
+	m_positionGraph		= new QImage(muldiv(1900, logX, 254), muldiv(300, logY, 254), QImage::Format_ARGB32_Premultiplied);
+	m_smallFont			= new QFont("Arial", muldiv(15, logY, 254));	
+	m_smallFontPixmap	= new QFont("Arial", 12);
+
+	m_label_1 = new QLabel();
+	initApnoeHistogram();
+	//m_label_1->setPixmap(QPixmap::fromImage(m_apnoeHistogramm->scaled(m_apnoeHistogramm->width() / 4, m_apnoeHistogramm->height() / 4)));//Was use for fast drawing but seems to be wrongly shown
+	m_label_1->setPixmap(m_apnoeHistogrammPixmap);
+	scrollArea_1->setBackgroundRole(QPalette::Dark);
+	scrollArea_1->setWidget(m_label_1);	
+
+	m_label_2 = new QLabel();
+	initPositionGraph();
+	//m_label_2->setPixmap(QPixmap::fromImage(m_positionGraph->scaled(m_positionGraph->width() / 4, m_positionGraph->height() / 4)));
+	m_label_2->setPixmap(m_positionGraphPixmap);
+	scrollArea_2->setBackgroundRole(QPalette::Dark);
+	scrollArea_2->setWidget(m_label_2);
+
+	QStringList labels_1;
+	labels_1 << tr("Кол-во");
+	labels_1 << tr("ИАГ");
+	labels_1 << tr("Средн., сек");
+	//labels_1 << tr("Мин., сек");
+	labels_1 << tr("Макс., сек");
+
+	QStringList labels_2;
+	labels_2 << tr("Обструктивное");
+
+	EnvironmentPtr pEnv;
+	if (pEnv->testOption(FullMode))
+	{
+		labels_2 << tr("Центральное");
+	}
+
+	ReportParams reportParams;
+	pEnv->reportParams(reportParams);
+
+	labels_2 << tr("Гипопноэ");
+	labels_2 << tr("Всего");
+	
+	tableWidget_1->setColumnCount(labels_1.size());
+	tableWidget_1->setRowCount(labels_2.size());
+	tableWidget_1->setHorizontalHeaderLabels(labels_1);
+	tableWidget_1->setVerticalHeaderLabels(labels_2);
+	tableWidget_1->horizontalHeader()->setStretchLastSection(true);
+	tableWidget_1->verticalHeader()->setStretchLastSection(true);
+
+	int row = 0;
+	tableWidget_1->setItem(row, 0, new QTableWidgetItem(QString("%1").arg(m_apneas.num(Episode::ObstrApnea))));
+	tableWidget_1->setItem(row, 1, new QTableWidgetItem(QString("%1").arg(m_apneas.ahi(Episode::ObstrApnea),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_1->setItem(row, 2, new QTableWidgetItem(QString("%1").arg(m_apneas.avg(Episode::ObstrApnea))));
+	//tableWidget_1->setItem(row, 3, new QTableWidgetItem(QString("%1").arg(m_apneas.min(Episode::ObstrApnea))));
+	tableWidget_1->setItem(row, 3, new QTableWidgetItem(QString("%1").arg(m_apneas.max(Episode::ObstrApnea))));
+	++row;
+
+	if (pEnv->testOption(FullMode))
+	{
+		tableWidget_1->setItem(row, 0, new QTableWidgetItem(QString("%1").arg(m_apneas.num(Episode::CentrApnea))));
+		tableWidget_1->setItem(row, 1, new QTableWidgetItem(QString("%1").arg(m_apneas.ahi(Episode::CentrApnea),		0,	'f', reportParams.maxPrecision)));
+		tableWidget_1->setItem(row, 2, new QTableWidgetItem(QString("%1").arg(m_apneas.avg(Episode::CentrApnea))));
+		//tableWidget_1->setItem(row, 3, new QTableWidgetItem(QString("%1").arg(m_apneas.min(Episode::CentrApnea))));
+		tableWidget_1->setItem(row, 3, new QTableWidgetItem(QString("%1").arg(m_apneas.max(Episode::CentrApnea))));
+		++row;
+	}
+
+	tableWidget_1->setItem(row, 0, new QTableWidgetItem(QString("%1").arg(m_apneas.num(Episode::Hypopnea))));
+	tableWidget_1->setItem(row, 1, new QTableWidgetItem(QString("%1").arg(m_apneas.ahi(Episode::Hypopnea),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_1->setItem(row, 2, new QTableWidgetItem(QString("%1").arg(m_apneas.avg(Episode::Hypopnea))));
+	//tableWidget_1->setItem(row, 3, new QTableWidgetItem(QString("%1").arg(m_apneas.min(Episode::Hypopnea))));
+	tableWidget_1->setItem(row, 3, new QTableWidgetItem(QString("%1").arg(m_apneas.max(Episode::Hypopnea))));
+	++row;
+
+	tableWidget_1->setItem(row, 0, new QTableWidgetItem(QString("%1").arg(m_apneas.num(Episode::All))));
+	tableWidget_1->setItem(row, 1, new QTableWidgetItem(QString("%1").arg(m_apneas.ahi(Episode::All),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_1->setItem(row, 2, new QTableWidgetItem(QString("%1").arg(m_apneas.avg(Episode::All))));
+	//tableWidget_1->setItem(row, 3, new QTableWidgetItem(QString("%1").arg(m_apneas.min(Episode::All))));
+	tableWidget_1->setItem(row, 3, new QTableWidgetItem(QString("%1").arg(m_apneas.max(Episode::All))));
+	++row;
+
+	QStringList labels_3;
+	labels_3 << tr("Кол-во") << tr("ODI");
+
+	QStringList labels_4;
+	labels_4 << tr("Всего") << tr("2%") << tr("3%") << tr("4% - 9%") << tr("10% - 20%") << tr("> 20%");
+
+	tableWidget_2->setColumnCount(2);
+	tableWidget_2->setRowCount(6);
+	tableWidget_2->setHorizontalHeaderLabels(labels_3);
+	tableWidget_2->setVerticalHeaderLabels(labels_4);
+	tableWidget_2->horizontalHeader()->setStretchLastSection(true);
+	tableWidget_2->verticalHeader()->setStretchLastSection(true);
+
+	tableWidget_2->setItem(0, 0, new QTableWidgetItem(QString("%1").arg(m_desat.total())));
+	tableWidget_2->setItem(0, 1, new QTableWidgetItem(QString("%1").arg(m_desat.totalODI(),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_2->setItem(1, 0, new QTableWidgetItem(QString("%1").arg(m_desat.num(2, 2))));
+	tableWidget_2->setItem(1, 1, new QTableWidgetItem(QString("%1").arg(m_desat.odi(2, 2),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_2->setItem(2, 0, new QTableWidgetItem(QString("%1").arg(m_desat.num(3, 3))));
+	tableWidget_2->setItem(2, 1, new QTableWidgetItem(QString("%1").arg(m_desat.odi(3, 3),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_2->setItem(3, 0, new QTableWidgetItem(QString("%1").arg(m_desat.num(4, 9))));
+	tableWidget_2->setItem(3, 1, new QTableWidgetItem(QString("%1").arg(m_desat.odi(4, 9),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_2->setItem(4, 0, new QTableWidgetItem(QString("%1").arg(m_desat.num(10, 20))));
+	tableWidget_2->setItem(4, 1, new QTableWidgetItem(QString("%1").arg(m_desat.odi(10, 20),	0,	'f', reportParams.maxPrecision)));
+	tableWidget_2->setItem(5, 0, new QTableWidgetItem(QString("%1").arg(m_desat.num(20, 100))));
+	tableWidget_2->setItem(5, 1, new QTableWidgetItem(QString("%1").arg(m_desat.odi(20, 100),	0,	'f', reportParams.maxPrecision)));
+
+	QStringList labels_5;
+	labels_5 << tr("Длит., мин");
+
+	QStringList labels_6;
+	labels_6 << "95-100%"	<< "90-94%" << "85-89%";
+	labels_6 << "80-84%"	<< "75-79%" << "70-74%";
+	labels_6 << "65-69%"	<< "60-64%" << "55-59%";
+	labels_6 << "50-54%"	<< "< 50%";
+
+	tableWidget_3->setColumnCount(1);
+	tableWidget_3->setRowCount(11);
+	tableWidget_3->setHorizontalHeaderLabels(labels_5);
+	tableWidget_3->setVerticalHeaderLabels(labels_6);
+	tableWidget_3->horizontalHeader()->setStretchLastSection(true);
+	tableWidget_3->verticalHeader()->setStretchLastSection(true);
+
+	tableWidget_3->setItem(0,  0, new QTableWidgetItem(QString("%1").arg(m_satur.duration(95, 100),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_3->setItem(1,  0, new QTableWidgetItem(QString("%1").arg(m_satur.duration(90, 94),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_3->setItem(2,  0, new QTableWidgetItem(QString("%1").arg(m_satur.duration(85, 89),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_3->setItem(3,  0, new QTableWidgetItem(QString("%1").arg(m_satur.duration(80, 84),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_3->setItem(4,  0, new QTableWidgetItem(QString("%1").arg(m_satur.duration(75, 79),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_3->setItem(5,  0, new QTableWidgetItem(QString("%1").arg(m_satur.duration(70, 74),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_3->setItem(6,  0, new QTableWidgetItem(QString("%1").arg(m_satur.duration(65, 69),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_3->setItem(7,  0, new QTableWidgetItem(QString("%1").arg(m_satur.duration(60, 64),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_3->setItem(8,  0, new QTableWidgetItem(QString("%1").arg(m_satur.duration(55, 59),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_3->setItem(9,  0, new QTableWidgetItem(QString("%1").arg(m_satur.duration(50, 54),		0,	'f', reportParams.maxPrecision)));
+	tableWidget_3->setItem(10, 0, new QTableWidgetItem(QString("%1").arg(m_satur.duration(0, 50),		0,	'f', reportParams.maxPrecision)));
+
+	QStringList labels_7;
+	labels_7 << tr("Сатурация");
+
+	QStringList labels_8;
+	labels_8 << tr("Средн.") << tr("Базовая") << tr("Мин.") << tr("Макс.");
+
+	tableWidget_4->setColumnCount(1);
+	tableWidget_4->setRowCount(4);
+	tableWidget_4->setHorizontalHeaderLabels(labels_7);
+	tableWidget_4->setVerticalHeaderLabels(labels_8);
+	tableWidget_4->horizontalHeader()->setStretchLastSection(true);
+	tableWidget_4->verticalHeader()->setStretchLastSection(true);
+	
+	tableWidget_4->setItem(0,  0, new QTableWidgetItem(QString("%1").arg(m_satur.avg())));
+	tableWidget_4->setItem(1,  0, new QTableWidgetItem(QString("%1").arg(m_satur.base())));
+	tableWidget_4->setItem(2,  0, new QTableWidgetItem(QString("%1").arg(m_satur.min())));
+	tableWidget_4->setItem(3,  0, new QTableWidgetItem(QString("%1").arg(m_satur.max())));
+
+	QStringList labels_Pulse_head;
+	labels_Pulse_head << tr("Пульс");
+
+	QStringList labels_Pulse_notation;
+	labels_Pulse_notation << tr("Средн.") << tr("Мин.") << tr("Макс.");
+
+	tableWidget_Pulse->setColumnCount(1);
+	tableWidget_Pulse->setRowCount(3);
+	tableWidget_Pulse->setHorizontalHeaderLabels(labels_Pulse_head);
+	tableWidget_Pulse->setVerticalHeaderLabels(labels_Pulse_notation);
+	tableWidget_Pulse->horizontalHeader()->setStretchLastSection(true);
+	tableWidget_Pulse->verticalHeader()->setStretchLastSection(true);
+	
+	tableWidget_Pulse->setItem(0,  0, new QTableWidgetItem(QString("%1").arg(m_pulse.avg())));
+	tableWidget_Pulse->setItem(1,  0, new QTableWidgetItem(QString("%1").arg(m_pulse.min())));
+	tableWidget_Pulse->setItem(2,  0, new QTableWidgetItem(QString("%1").arg(m_pulse.max())));
+
+	connect(tableWidget_4,		SIGNAL(cellChanged(int, int)), this, SLOT(editData(int, int)));
+	connect(tableWidget_Pulse,	SIGNAL(cellChanged(int, int)), this, SLOT(editData(int, int)));
+}
+
+ReportDlg::~ReportDlg()
+{
+	delete m_printer;
+	delete m_apnoeHistogramm;
+	delete m_positionGraph;
+	delete m_smallFont;
+}
+
+bool ReportDlg::eventFilter(QObject *target, QEvent *e)
+{
+	bool needUpdate = false;
+	if (target == this && e->type() == QEvent::Paint)
+	{
+		needUpdate = true;
+	}
+
+	bool res = QWidget::eventFilter(target, e);
+
+	if (needUpdate)
+	{
+		updateView();
+	}
+
+	return res;
+}
+
+void ReportDlg::updateView()
+{
+	QRect wRect = this->geometry();
+	groupBox_1->setGeometry(10,									10,								wRect.width() / 3 - 20,			wRect.height() / 3 - 60);
+	tableWidget_1->setGeometry(10,								20,								wRect.width() / 3 - 40,			wRect.height() / 3 - 90);
+
+	groupBox_2->setGeometry(wRect.width() / 3,					10,								wRect.width() / 6 - 20,			wRect.height() / 3 - 60);
+	tableWidget_2->setGeometry(10,								20,								wRect.width() / 6 - 40,			wRect.height() / 3 - 90);
+	
+	groupBox_3->setGeometry(1.5 * (wRect.width() / 3 - 5),		10,								wRect.width() / 3 - 10,			wRect.height() / 3 - 60);
+	tableWidget_3->setGeometry(10,								20,								(wRect.width() / 3 - 40) / 2,	wRect.height() / 3 - 90);
+	tableWidget_4->setGeometry((wRect.width() / 3) / 2,			20,								(wRect.width() / 3 - 40) / 2,	wRect.height() / 3 - 90);
+	
+	groupBox_Pulse->setGeometry(2.5 * (wRect.width() / 3 - 5),	10,								wRect.width() / 6 - 10,			wRect.height() / 3 - 60);
+	tableWidget_Pulse->setGeometry(10,							20,								wRect.width() / 6 - 30,			wRect.height() / 3 - 90);
+
+	groupBox->setGeometry(10,									wRect.height() / 3 - 50,		wRect.width() - 30,				wRect.height() / 3 + 10);
+	scrollArea_1->setGeometry(10,								20,								wRect.width() - 50,				wRect.height() / 3 - 20);
+
+	groupBox_4->setGeometry(10,									2 * wRect.height() / 3 - 40,	wRect.width() - 30,				wRect.height() / 3 + 10);
+	scrollArea_2->setGeometry(10,								20,								wRect.width() - 50,				wRect.height() / 3 - 20);
+
+	layoutWidget->setGeometry(20,								wRect.height() - 30,			wRect.width() - 40,				20);
+}
+
+void ReportDlg::printPatientInfo(QPainter *painter)
+{
+	EnvironmentPtr pEnv;
+	int logX = painter->paintEngine()->paintDevice()->physicalDpiX() * 10;
+	int logY = painter->paintEngine()->paintDevice()->physicalDpiY() * 10;
+	QFont baseFont("Arial", muldiv(25, logY, 254));
+	QFont boldFont("Arial", muldiv(25, logY, 254), QFont::Bold);
+
+	/* Вывод имени и пола пациента */ {
+		Table::View table(QRect(muldiv(100, logX, 254), muldiv(200, logY, 254), muldiv(1200, logX, 254), muldiv(50, logY, 254)));
+		table.insert(qMakePair(0,0), Table::Cell(tr(" ФИО:"),										boldFont, Qt::AlignLeft | Qt::AlignVCenter,	12));
+		table.insert(qMakePair(1,0), Table::Cell(pEnv->patientName(),								baseFont, Qt::AlignCenter,					56));
+		table.insert(qMakePair(2,0), Table::Cell(tr(" Пол:"),										boldFont, Qt::AlignLeft | Qt::AlignVCenter,	12));
+		table.insert(qMakePair(3,0), Table::Cell(pEnv->patientSex(),								baseFont, Qt::AlignCenter,					20));
+		table.draw(painter);
+	}
+
+	/* Вывод возраста, роста и веса пациента */ {
+		QRect rect(muldiv(100, logX, 254), muldiv(250, logY, 254), muldiv(1200, logX, 254),	muldiv(50, logY, 254));
+
+		Table::View table(rect);
+		table.insert(qMakePair(0,0), Table::Cell(tr(" Возраст:"),									boldFont, Qt::AlignLeft | Qt::AlignVCenter, 15));
+		table.insert(qMakePair(1,0), Table::Cell(QString("%1").arg(pEnv->patientAge()),				baseFont, Qt::AlignCenter,					20));
+		table.insert(qMakePair(2,0), Table::Cell(tr(" Рост:"),										boldFont, Qt::AlignLeft | Qt::AlignVCenter,	10));
+		table.insert(qMakePair(3,0), Table::Cell(QString("%1").arg(pEnv->patientHeight()),			baseFont, Qt::AlignCenter,					25));
+		table.insert(qMakePair(4,0), Table::Cell(tr(" Вес:"),										boldFont, Qt::AlignLeft | Qt::AlignVCenter,	10));
+		table.insert(qMakePair(5,0), Table::Cell(QString("%1").arg(pEnv->patientWeight()),			baseFont, Qt::AlignCenter,					20));
+		table.draw(painter);
+	}
+
+	/* Вывод адреса и телефона пациента */ {
+		Table::View table(QRect(muldiv(100, logX, 254), muldiv(300, logY, 254),	muldiv(1200, logX, 254), muldiv(50, logY, 254)));
+		table.insert(qMakePair(0,0), Table::Cell(tr(" Адрес:"),										boldFont, Qt::AlignLeft | Qt::AlignVCenter, 15));
+		table.insert(qMakePair(1,0), Table::Cell(pEnv->patientAddress(),							baseFont, Qt::AlignCenter,					40));
+		table.insert(qMakePair(2,0), Table::Cell(tr(" Телефон:"),									boldFont, Qt::AlignLeft | Qt::AlignVCenter,	20));
+		table.insert(qMakePair(3,0), Table::Cell(pEnv->patientPhone(),								baseFont, Qt::AlignCenter,					25));
+		table.draw(painter);
+	}
+
+	/* Вывод цели обследования */ {
+		Table::View table(QRect(muldiv(100, logX, 254),	muldiv(350, logY, 254),	muldiv(1200, logX, 254), muldiv(150, logY, 254)));
+		table.insert(qMakePair(0,0), Table::Cell(tr("Цель обследования:"),							boldFont, Qt::AlignLeft | Qt::TextWordWrap, 25, -1, Table::BorderLeft	| Table::BorderTop		| Table::BorderBottom));
+		table.insert(qMakePair(1,0), Table::Cell(pEnv->patientPurpose(),							baseFont, Qt::AlignLeft | Qt::TextWordWrap, 75, -1,	Table::BorderTop	| Table::BorderRight	| Table::BorderBottom));
+		table.draw(painter);
+	}
+
+	/* Вывод даты обследования и анализа, отделения, палаты, врача */ {
+		Table::View table(QRect(muldiv(1350, logX, 254), muldiv(200, logY, 254), muldiv(650, logX, 254), muldiv(300, logY, 254)));
+		table.insert(qMakePair(0,0), Table::Cell(tr(" Дата обследования:"),							boldFont, Qt::AlignLeft | Qt::AlignVCenter, 55));
+		table.insert(qMakePair(1,0), Table::Cell(pEnv->inspectionDate().toString("dd.MM.yyyy"),		baseFont, Qt::AlignCenter,					45));
+		table.insert(qMakePair(0,1), Table::Cell(tr(" Дата анализа:"),								boldFont, Qt::AlignLeft | Qt::AlignVCenter, 55));
+		table.insert(qMakePair(1,1), Table::Cell(pEnv->analysisDate().toString("dd.MM.yyyy"),		baseFont, Qt::AlignCenter,					45));
+		table.insert(qMakePair(0,2), Table::Cell(tr(" Отделение:"),									boldFont, Qt::AlignLeft | Qt::AlignVCenter, 55));
+		table.insert(qMakePair(1,2), Table::Cell(pEnv->patientDepartment(),							baseFont, Qt::AlignCenter,					45));
+		table.insert(qMakePair(0,3), Table::Cell(tr(" Палата:"),									boldFont, Qt::AlignLeft | Qt::AlignVCenter, 55));
+		table.insert(qMakePair(1,3), Table::Cell(pEnv->patientWard(),								baseFont, Qt::AlignCenter,					45));
+		table.insert(qMakePair(0,4), Table::Cell(tr(" Врач:"),										boldFont, Qt::AlignLeft | Qt::AlignVCenter, 55, -1, Table::BorderNone));
+		table.insert(qMakePair(1,4), Table::Cell(pEnv->patientPhysician(),								baseFont, Qt::AlignCenter,					45, -1, Table::BorderNone));
+		table.draw(painter);
+	}
+}
+
+/*!
+	Функция рисует шкалу времени, соотв. длине
+	всей записи в заданной прямоугольной области.
+*/
+void ReportDlg::drawTimeScale(QPainter *painter, const QRect &rc, const QRect &ext)
+{
+	EnvironmentPtr pEnv;
+	static const int secsInHour = 60 * 60;
+	const int secsTotal			= pEnv->secsTotal();
+	const int hoursCount		= secsTotal / secsInHour;
+	
+	// from this time we will be count intervals
+	QDateTime time = pEnv->startTime();
+	
+	if (hoursCount > 12)
+	{
+		while (time.time().minute() > 0 || time.time().second() > 0)
+		{
+			time = time.addSecs(1);
+		}
+	}
+	else if (hoursCount > 6)
+	{
+		while (time.time().minute() % 30 || time.time().second() > 0)
+		{
+			time = time.addSecs(1);
+		}
+	}
+	else if (hoursCount > 2)
+	{
+		while (time.time().minute() % 5 || time.time().second() > 0)
+		{
+			time = time.addSecs(1);
+		}
+	}
+	else if (hoursCount <= 0)
+	{
+		while (time.time().minute() % 1 || time.time().second() > 0)
+		{
+			time = time.addSecs(1);
+		}
+	}
+	
+	int diff	= pEnv->startTime().secsTo(time),
+		hourLen = muldiv(secsInHour, rc.width(), secsTotal);
+
+	QPen extPen(Qt::gray, QPen().width(), Qt::DashLine);
+
+	for (int i = diff; i <= secsTotal; i += secsInHour)
+	{
+		int x = rc.left() + muldiv(i, rc.width(), secsTotal);
+		painter->drawLine(x, rc.top(), x, rc.top() + rc.height()/3);
+		painter->drawText(QRect(x - hourLen/2, rc.top() + rc.height()/2, hourLen, rc.height() / 2),	Qt::AlignCenter, time.time().toString("hh:mm"));
+
+		if (!ext.isNull())
+		{
+			painter->setPen(extPen);
+			int x = ext.left() + muldiv(i, ext.width(), secsTotal);
+			painter->drawLine(x, ext.top(), x, ext.bottom());
+			painter->setPen(QPen());
+		}
+		
+		time = time.addSecs(secsInHour);
+	}
+}
+
+void ReportDlg::preview()
+{
+	QPrintPreviewDialog	previewDlg;
+	QRect				rc(QApplication::desktop()->screenGeometry());
+	previewDlg.setGeometry(muldiv(rc.width(), 1, 10), muldiv(rc.height(), 1, 10), muldiv(rc.width(), 8, 10), muldiv(rc.height(), 8, 10));
+	connect(&previewDlg, SIGNAL(paintRequested(QPrinter *)), this, SLOT(paint(QPrinter *)));
+	previewDlg.exec();
+}
+
+void ReportDlg::print()
+{
+	QPrintDialog printDlg(m_printer, this);
+	if (printDlg.exec())
+	{
+		paint(m_printer);
+	}
+}
+
+void ReportDlg::paint(QPrinter *printer) const
+{
+	QPainter *painter = new QPainter(printer);
+
+	int		logX = painter->paintEngine()->paintDevice()->physicalDpiX() * 10,
+			logY = painter->paintEngine()->paintDevice()->physicalDpiY() * 10;
+
+	QFont	baseFont("Arial", muldiv(25, logY, 254));
+	QFont	boldFont("Arial", muldiv(25, logY, 254), QFont::Bold);
+	QFont	headFont("Arial", muldiv(35, logY, 254), QFont::Bold);
+
+	QRect	mainRect(muldiv(0, logX, 254), muldiv(0, logY, 254), muldiv(2100, logX, 254), muldiv(2970, logY, 254));
+	
+	painter->fillRect(mainRect, Qt::white);
+	painter->setFont(baseFont);
+	painter->setWindow(0, 0, muldiv(2100, logX, 254), muldiv(2970, logY, 254));
+
+	/* Вывод заголовка */ {
+		QRect rc(muldiv(100, logX, 254), muldiv(100, logY, 254), muldiv(1900, logX, 254), muldiv(50, logY, 254));
+		painter->drawRect(rc);
+		painter->drawText(rc, Qt::AlignCenter, tr("Astrocard Somno Studio"));
+	}
+
+	printPatientInfo(painter);
+
+	ReportParams reportParams;
+
+	/* Вывод текста автоматического заключения */ {
+		QRect rc(muldiv(100, logX, 254), muldiv(525, logY, 254), muldiv(1900, logX, 254), muldiv(50, logY, 254));
+
+		EnvironmentPtr	pEnv;
+
+		pEnv->reportParams(reportParams);
+
+		QDateTime		start(pEnv->startTime());
+		QDateTime		end(start.addSecs(pEnv->secsTotal()));
+		quint32			total									= pEnv->secsTotal();
+
+		QString			autotext								= tr("Запись проанализирована с %1 ч %2 мин по %3 ч %4 мин (общее время %5 ч %6 мин).").arg(start.time().hour(), 2).arg(start.time().minute(), 2).arg(end.time().hour(), 2).arg(end.time().minute(), 2).arg(total / 3600, 2).arg((total % 3600) / 60, 2);
+
+		painter->drawText(rc, Qt::AlignCenter, autotext);
+	}	
+
+	/* Вывод названия таблицы "Анализ апноэ" и индекса апноэ/гипопноэ */ {
+		Table::View table(QRect(muldiv(100, logX, 254), muldiv(550, logY, 254), muldiv(1900, logX, 254), muldiv(100, logY, 254)));
+		table.insert(qMakePair(0,0), Table::Cell(tr("Анализ апноэ"),										headFont, Qt::AlignCenter, 80, -1, Table::BorderNone));
+		table.insert(qMakePair(1,0), Table::Cell(tr("ИАГ = %1").arg(m_apneas.ahi(Episode::All),		0,	'f', reportParams.maxPrecision),	boldFont, Qt::AlignCenter, 20, -1, Table::BorderNone));
+		table.draw(painter);
+	}
+
+	/* Вывод заголовка таблицы "Анализ апноэ" */ {
+		Table::View table(QRect(muldiv(100, logX, 254),	muldiv(650, logY, 254),	muldiv(1900, logX, 254), muldiv(50, logY, 254)));
+		table.insert(qMakePair(0,0), Table::Cell(tr("Нарушения"),			boldFont, Qt::AlignCenter, 20));
+		table.insert(qMakePair(1,0), Table::Cell(tr("Кол - во"),			boldFont, Qt::AlignCenter, 10));
+		table.insert(qMakePair(2,0), Table::Cell(tr("ИАГ"),					boldFont, Qt::AlignCenter, 10));
+		table.insert(qMakePair(3,0), Table::Cell(tr("Длительность, сек"),	boldFont, Qt::AlignCenter, 60));
+		table.draw(painter);
+	}
+
+	/* Вывод подзаголовка таблицы "Анализ апноэ" */ {
+		Table::View table(QRect(muldiv(100, logX, 254),	muldiv(700, logY, 254),	muldiv(1900, logX, 254), muldiv(50, logY, 254)));
+		table.insert(qMakePair(0,0), Table::Cell(tr(""),					boldFont, Qt::AlignCenter, 40));
+		table.insert(qMakePair(1,0), Table::Cell(tr("Средн."),				boldFont, Qt::AlignCenter, 30));
+		//table.insert(qMakePair(2,0), Table::Cell(tr("Мин."),				boldFont, Qt::AlignCenter, 20));
+		table.insert(qMakePair(2,0), Table::Cell(tr("Макс."),				boldFont, Qt::AlignCenter, 30));
+		table.draw(painter);
+	}
+
+	/* Вывод данных таблицы "Анализ апноэ" */ {
+		EnvironmentPtr pEnv;
+
+		Table::View table(QRect(muldiv(100, logX, 254),	muldiv(750, logY, 254),	muldiv(1900, logX, 254), muldiv(pEnv->testOption(FullMode) ? 250 : 200, logY, 254)));
+
+		int row = 0;
+		
+		table.insert(qMakePair(0, row), Table::Cell(tr(" Обструктивное"), baseFont, Qt::AlignLeft|Qt::AlignVCenter, 20));
+		table.insert(qMakePair(1, row), Table::Cell(QString("%1").arg(m_apneas.num(Episode::ObstrApnea)), baseFont, Qt::AlignCenter, 10));
+		table.insert(qMakePair(2, row), Table::Cell(QString("%1").arg(m_apneas.ahi(Episode::ObstrApnea), 0,	'f', reportParams.maxPrecision), baseFont, Qt::AlignCenter, 10));
+		table.insert(qMakePair(3, row), Table::Cell(QString("%1").arg(m_apneas.avg(Episode::ObstrApnea)), baseFont, Qt::AlignCenter, 30));
+		//table.insert(qMakePair(4, row), Table::Cell(QString("%1").arg(m_apneas.min(Episode::ObstrApnea)), baseFont, Qt::AlignCenter, 20));
+		table.insert(qMakePair(4, row), Table::Cell(QString("%1").arg(m_apneas.max(Episode::ObstrApnea)), baseFont, Qt::AlignCenter, 30));
+		++row;
+
+		if (pEnv->testOption(FullMode))
+		{
+			table.insert(qMakePair(0, row), Table::Cell(tr(" Центральное"), baseFont, Qt::AlignLeft|Qt::AlignVCenter, 20));
+			table.insert(qMakePair(1, row), Table::Cell(QString("%1").arg(m_apneas.num(Episode::CentrApnea)), baseFont, Qt::AlignCenter, 10));
+			table.insert(qMakePair(2, row), Table::Cell(QString("%1").arg(m_apneas.ahi(Episode::CentrApnea), 0,	'f', reportParams.maxPrecision), baseFont, Qt::AlignCenter, 10));
+			table.insert(qMakePair(3, row), Table::Cell(QString("%1").arg(m_apneas.avg(Episode::CentrApnea)), baseFont, Qt::AlignCenter, 30));
+			//table.insert(qMakePair(4, row), Table::Cell(QString("%1").arg(m_apneas.min(Episode::CentrApnea)), baseFont, Qt::AlignCenter, 20));
+			table.insert(qMakePair(4, row), Table::Cell(QString("%1").arg(m_apneas.max(Episode::CentrApnea)), baseFont, Qt::AlignCenter, 30));
+			++row;
+		}
+
+		table.insert(qMakePair(0, row), Table::Cell(tr(" Гипопноэ"), baseFont, Qt::AlignLeft|Qt::AlignVCenter, 20));
+		table.insert(qMakePair(1, row), Table::Cell(QString("%1").arg(m_apneas.num(Episode::Hypopnea)), baseFont, Qt::AlignCenter, 10));
+		table.insert(qMakePair(2, row), Table::Cell(QString("%1").arg(m_apneas.ahi(Episode::Hypopnea), 0,	'f', reportParams.maxPrecision), baseFont, Qt::AlignCenter, 10));
+		table.insert(qMakePair(3, row), Table::Cell(QString("%1").arg(m_apneas.avg(Episode::Hypopnea)), baseFont, Qt::AlignCenter, 30));
+		//table.insert(qMakePair(4, row), Table::Cell(QString("%1").arg(m_apneas.min(Episode::Hypopnea)), baseFont, Qt::AlignCenter, 20));
+		table.insert(qMakePair(4, row), Table::Cell(QString("%1").arg(m_apneas.max(Episode::Hypopnea)), baseFont, Qt::AlignCenter, 30));
+		++row;
+
+		table.insert(qMakePair(0, row), Table::Cell(tr(" Всего"), boldFont, Qt::AlignLeft|Qt::AlignVCenter, 20));
+		table.insert(qMakePair(1, row), Table::Cell(QString("%1").arg(m_apneas.num(Episode::All)), boldFont, Qt::AlignCenter, 10));
+		table.insert(qMakePair(2, row), Table::Cell(QString("%1").arg(m_apneas.ahi(Episode::All), 0,	'f', reportParams.maxPrecision), boldFont, Qt::AlignCenter, 10));
+		table.insert(qMakePair(3, row), Table::Cell(QString("%1").arg(m_apneas.avg(Episode::All)), boldFont, Qt::AlignCenter, 30));
+		//table.insert(qMakePair(4, row), Table::Cell(QString("%1").arg(m_apneas.min(Episode::All)), boldFont, Qt::AlignCenter, 20));
+		table.insert(qMakePair(4, row), Table::Cell(QString("%1").arg(m_apneas.max(Episode::All)), boldFont, Qt::AlignCenter, 30));
+		++row;
+
+		table.draw(painter);
+	}
+
+	/* Вывод гистограммы событий апноэ */ {
+		QRect rc(muldiv(100, logX, 254), muldiv(1050, logY, 254), muldiv(1900, logX, 254), muldiv(350, logY, 254));
+		painter->drawImage(rc, *m_apnoeHistogramm);
+	}
+
+	/* Вывод графика "Положение тела" */ {
+		QRect rc(muldiv(100, logX, 254), muldiv(1425, logY, 254), muldiv(1900, logX, 254), muldiv(300, logY, 254));
+		painter->drawImage(rc, *m_positionGraph);
+	}
+
+	/* Вывод названия таблицы "Анализ сатурации" и индекса десатурации */ {
+		Table::View table(QRect(muldiv(100, logX, 254), muldiv(1725, logY, 254), muldiv(1900, logX, 254), muldiv(100, logY, 254)));
+		table.insert(qMakePair(0,0), Table::Cell(tr("Анализ сатурации"), headFont, Qt::AlignCenter, 80, -1, Table::BorderNone));
+		table.insert(qMakePair(1,0), Table::Cell(tr("ODI = %1").arg(m_desat.totalODI(), 0,	'f', reportParams.maxPrecision), boldFont, Qt::AlignCenter, 20, -1, Table::BorderNone));
+		table.draw(painter);
+	}
+
+	/* Вывод таблицы "Анализ Десатурации" */ {
+		Table::View table(QRect(muldiv(100, logX, 254),	muldiv(1825, logY, 254), muldiv(750, logX, 254), muldiv(350, logY, 254)));
+		
+		table.insert(qMakePair(0,0), Table::Cell(tr("Десатурация"),										boldFont, Qt::AlignCenter,					40));
+		table.insert(qMakePair(1,0), Table::Cell(tr("Кол - во"),										boldFont, Qt::AlignCenter,					30));
+		table.insert(qMakePair(2,0), Table::Cell(tr("ODI"),												boldFont, Qt::AlignCenter,					30));
+
+		table.insert(qMakePair(0,1), Table::Cell(tr(" Всего"),											boldFont, Qt::AlignLeft | Qt::AlignVCenter, 40));
+		table.insert(qMakePair(1,1), Table::Cell(QString("%1").arg(m_desat.total()),					boldFont, Qt::AlignCenter,					30));
+		table.insert(qMakePair(2,1), Table::Cell(QString("%1").arg(m_desat.totalODI(), 0,	'f', reportParams.maxPrecision),	boldFont, Qt::AlignCenter,					30));
+
+		table.insert(qMakePair(0,2), Table::Cell(tr(" 2%"),												baseFont, Qt::AlignLeft | Qt::AlignVCenter, 40));
+		table.insert(qMakePair(1,2), Table::Cell(QString("%1").arg(m_desat.num(2, 2)),					baseFont, Qt::AlignCenter,					30));
+		table.insert(qMakePair(2,2), Table::Cell(QString("%1").arg(m_desat.odi(2, 2), 0,	'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter,					30));
+
+		table.insert(qMakePair(0,3), Table::Cell(tr(" 3%"),												baseFont, Qt::AlignLeft | Qt::AlignVCenter, 40));
+		table.insert(qMakePair(1,3), Table::Cell(QString("%1").arg(m_desat.num(3, 3)),					baseFont, Qt::AlignCenter,					30));
+		table.insert(qMakePair(2,3), Table::Cell(QString("%1").arg(m_desat.odi(3, 3), 0,	'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter,					30));
+
+		table.insert(qMakePair(0,4), Table::Cell(tr(" 4% - 9%"),										baseFont, Qt::AlignLeft | Qt::AlignVCenter, 40));
+		table.insert(qMakePair(1,4), Table::Cell(QString("%1").arg(m_desat.num(4, 9)),					baseFont, Qt::AlignCenter,					30));
+		table.insert(qMakePair(2,4), Table::Cell(QString("%1").arg(m_desat.odi(4, 9), 0,	'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter,					30));
+
+		table.insert(qMakePair(0,5), Table::Cell(tr(" 10% - 20%"),										baseFont, Qt::AlignLeft | Qt::AlignVCenter,	40));
+		table.insert(qMakePair(1,5), Table::Cell(QString("%1").arg(m_desat.num(10, 20)),				baseFont, Qt::AlignCenter,					30));
+		table.insert(qMakePair(2,5), Table::Cell(QString("%1").arg(m_desat.odi(10, 20), 0,	'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter,					30));
+
+		table.insert(qMakePair(0,6), Table::Cell(tr(" > 20%"),											baseFont, Qt::AlignLeft | Qt::AlignVCenter,	40));
+		table.insert(qMakePair(1,6), Table::Cell(QString("%1").arg(m_desat.num(20, 100)),				baseFont, Qt::AlignCenter,					30));
+		table.insert(qMakePair(2,6), Table::Cell(QString("%1").arg(m_desat.odi(20, 100), 0,	'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter,					30));
+
+		table.draw(painter);
+	}
+
+	/* Вывод breakdown table */ {
+		Table::View table(QRect(muldiv(900, logX, 254), muldiv(1825, logY, 254), muldiv(1100, logX, 254), muldiv(350, logY, 254)));
+		
+		table.insert(qMakePair(0,0), Table::Cell(tr("95-100%"),										baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(0,1), Table::Cell(tr("90-94%"),										baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(0,2), Table::Cell(tr("85-89%"),										baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(0,3), Table::Cell(tr("80-84%"),										baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(0,4), Table::Cell(tr("75-79%"),										baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(0,5), Table::Cell(tr("70-74%"),										baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(0,6), Table::Cell(tr("65-69%"),										baseFont, Qt::AlignCenter));
+
+		table.insert(qMakePair(1,0), Table::Cell(QString("%1 мин.").arg(m_satur.duration(95, 100),	0,		'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(1,1), Table::Cell(QString("%1 мин.").arg(m_satur.duration(90, 94),	0,		'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(1,2), Table::Cell(QString("%1 мин.").arg(m_satur.duration(85, 89),	0,		'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(1,3), Table::Cell(QString("%1 мин.").arg(m_satur.duration(80, 84),	0,		'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(1,4), Table::Cell(QString("%1 мин.").arg(m_satur.duration(75, 79),	0,		'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(1,5), Table::Cell(QString("%1 мин.").arg(m_satur.duration(70, 74),	0,		'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(1,6), Table::Cell(QString("%1 мин.").arg(m_satur.duration(65, 69),	0,		'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter));
+
+		table.insert(qMakePair(2,0), Table::Cell(tr("60-64%"),										baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(2,1), Table::Cell(tr("55-59%"),										baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(2,2), Table::Cell(tr("50-54%"),										baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(2,3), Table::Cell(tr("< 50%"),										baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(2,4), Table::Cell(tr(""),											baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(2,5), Table::Cell(tr(""),											baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(2,6), Table::Cell(tr(""),											baseFont, Qt::AlignCenter));
+
+		table.insert(qMakePair(3,0), Table::Cell(QString("%1 мин.").arg(m_satur.duration(60, 64),	0,		'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(3,1), Table::Cell(QString("%1 мин.").arg(m_satur.duration(55, 59),	0,		'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(3,2), Table::Cell(QString("%1 мин.").arg(m_satur.duration(50, 54),	0,		'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(3,3), Table::Cell(QString("%1 мин.").arg(m_satur.duration(0, 50),	0,		'f', reportParams.maxPrecision),	baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(3,4), Table::Cell(tr(""),											baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(3,5), Table::Cell(tr(""),											baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(3,6), Table::Cell(tr(""),											baseFont, Qt::AlignCenter));
+		
+		table.draw(painter);
+	}
+
+	/* Вывод таблицы "Анализ сатурации" */ {
+		Table::View table(QRect(muldiv(100, logX, 254), muldiv(2200, logY, 254), muldiv(1900, logX, 254), muldiv(100, logY, 254)));
+		
+		table.insert(qMakePair(0,0), Table::Cell(tr("Сатурация"),									boldFont, Qt::AlignCenter));
+		table.insert(qMakePair(1,0), Table::Cell(tr("Средн."),										boldFont, Qt::AlignCenter));
+		table.insert(qMakePair(2,0), Table::Cell(tr("Базовый"),										boldFont, Qt::AlignCenter));
+		table.insert(qMakePair(3,0), Table::Cell(tr("Мин."),										boldFont, Qt::AlignCenter));
+		table.insert(qMakePair(4,0), Table::Cell(tr("Макс."),										boldFont, Qt::AlignCenter));
+		
+		table.insert(qMakePair(0,1), Table::Cell(tr(""),											baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(1,1), Table::Cell(QString("%1").arg(m_satur.avg()),					baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(2,1), Table::Cell(QString("%1").arg(m_satur.base()),					baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(3,1), Table::Cell(QString("%1").arg(m_satur.min()),					baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(4,1), Table::Cell(QString("%1").arg(m_satur.max()),					baseFont, Qt::AlignCenter));
+		
+		table.draw(painter);
+	}
+
+	/* Вывод таблицы "Анализ пульса" */ {
+		Table::View table(QRect(muldiv(100, logX, 254), muldiv(2325, logY, 254), muldiv(1900, logX, 254), muldiv(100, logY, 254)));
+		
+		table.insert(qMakePair(0,0), Table::Cell(tr("Пульс"),										boldFont, Qt::AlignCenter));
+		table.insert(qMakePair(1,0), Table::Cell(tr("Средн."),										boldFont, Qt::AlignCenter));
+		table.insert(qMakePair(2,0), Table::Cell(tr("Мин."),										boldFont, Qt::AlignCenter));
+		table.insert(qMakePair(3,0), Table::Cell(tr("Макс."),										boldFont, Qt::AlignCenter));
+		
+		table.insert(qMakePair(0,1), Table::Cell(tr(""),											baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(1,1), Table::Cell(QString("%1").arg(m_pulse.avg()),					baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(2,1), Table::Cell(QString("%1").arg(m_pulse.min()),					baseFont, Qt::AlignCenter));
+		table.insert(qMakePair(3,1), Table::Cell(QString("%1").arg(m_pulse.max()),					baseFont, Qt::AlignCenter));
+		
+		table.draw(painter);
+	}
+
+	/* Вывод текста врачебного заключения */ {
+		Table::View table(QRect(muldiv(100, logX, 254), muldiv(2450, logY, 254), muldiv(1900, logX, 254), muldiv(300, logY, 254)));
+		
+		table.insert(qMakePair(0,0), Table::Cell(tr("Примечание:"),	boldFont, Qt::AlignLeft,					15, -1, Table::BorderLeft	| Table::BorderTop		| Table::BorderBottom));
+		table.insert(qMakePair(1,0), Table::Cell(tr(""),			baseFont, Qt::AlignLeft|Qt::TextWordWrap,	85, -1,	Table::BorderTop	| Table::BorderRight	| Table::BorderBottom));
+		table.draw(painter);
+	}
+
+	/* Вывод места для врачебной подписи */ {
+		painter->drawText(QRect(muldiv(1500, logX, 254),	muldiv(2780, logY, 254), muldiv(200,	logX, 254),	muldiv(50,		logY, 254)), Qt::AlignCenter, tr("Врач:"));
+		painter->drawLine(muldiv(1700, logX, 254),			muldiv(2830, logY, 254), muldiv(2000,	logX, 254),	muldiv(2830,	logY, 254));
+		painter->drawText(QRect(muldiv(1700, logX, 254),	muldiv(2830, logY, 254), muldiv(300,	logX, 254),	muldiv(50,		logY, 254)), Qt::AlignCenter, tr("подпись"));
+	}
+
+	delete painter;
+}
+
+static int OneEpisodeSize = 10;
+
+void ReportDlg::apnoeHistogramDraw(QPainter *painter, QRect *rc1, QRect *rc2, QRect *rc3, QRect *rc4)
+{
+	/* Вывод подписи слева от гистограммы */ {		
+		//for (int i = 100; i >= 0; i -= 25)
+		for (int i = 100; i >= 0; i -= OneEpisodeSize)
+		{
+			int y = rc1->bottom() - muldiv(i, rc1->height(), 100);
+			painter->drawLine(rc1->right() - rc1->width()/20,			y,					rc1->right(),		y);
+			painter->drawText(QRect(rc1->right() - rc1->width() / 2,	y - rc1->width() / 8,	muldiv(rc1->width(), 9, 20),	rc1->width() / 4), Qt::AlignCenter, QString("%1").arg(i / OneEpisodeSize));//arg(i));
+		}
+
+		QTransform old = painter->transform();
+		painter->translate(rc1->bottomLeft());
+		painter->rotate(-90);
+		painter->drawText(QRect(0, 0, rc1->height(), rc1->width()/2), Qt::AlignCenter, tr("Длительность\r\n(сек)"));
+		painter->setTransform(old);
+	}
+
+	/* Вывод гистограммы событий апноэ */ {
+		EnvironmentPtr pEnv;
+		int totalSecs = pEnv->secsTotal();
+		
+		struct process_interval
+		{
+			struct len_summ
+			{
+				int operator()(int prev, const Episode *elem)
+				{
+					return prev + elem->length();
+				}
+			} lsumm;
+
+			void operator()(QPainter *painter, int h, int bsec, int esec, int type, QRect &r)
+			{
+				QSqlQuery			query;
+				QVector<Episode *>	episodes;
+				query.prepare("SELECT * FROM episodes WHERE bsec BETWEEN ? AND ? AND type = ?;");
+				query.addBindValue(bsec);
+				query.addBindValue(esec);
+				query.addBindValue(type);
+				query.exec();
+				while (query.next())
+				{
+					episodes.push_back(new Episode(query));
+				}
+
+				if (int sum = std::accumulate(episodes.begin(), episodes.end(), 0, lsumm))
+				{
+					r.setBottom(r.top());
+					r.setTop(r.bottom() - episodes.size() * muldiv(OneEpisodeSize, h, 100));//r.setTop(r.bottom() - muldiv((sum * 100) / (esec - bsec), h, 100));
+					painter->fillRect(r, (*episodes.begin())->color());h;
+					painter->drawRect(r);
+				}
+
+				qDeleteAll(episodes.begin(), episodes.end());
+			}
+		} process;
+
+		const int step = 60 * 5; // пять минут
+		for (int i = 0; i < totalSecs; i += step)
+		{
+			QRect r(rc2->left() + muldiv(i, rc2->width(), totalSecs), rc2->bottom(), muldiv(step, rc2->width(), totalSecs), rc2->bottom());
+
+			process(painter, rc2->height(), i, i + step, Episode::CentrApnea,	r);
+			process(painter, rc2->height(), i, i + step, Episode::ObstrApnea,	r);
+			process(painter, rc2->height(), i, i + step, Episode::Hypopnea,		r);
+		}
+		
+		painter->drawRect(*rc2);
+	}
+
+	/* Вывод шкалы времени под гистограммой */ {		
+		drawTimeScale(painter, *rc3);
+	}
+
+	/* Вывод легенды под гистограммой */ {
+		QSqlQuery query;
+		query.prepare("SELECT * FROM types WHERE id BETWEEN ? AND ?");
+		query.addBindValue(Episode::Hypopnea);
+		query.addBindValue(Episode::ObstrApnea);
+		query.exec();
+
+		int i = 0;
+		while (query.next())
+		{
+			QRect r(rc4->left() + i * rc4->width() / 4, rc4->top(), rc4->width() / 4, rc4->height());
+			
+			painter->fillRect(QRect(r.left() + 10,				r.top() + 10,	rc4->y() / 10,	rc4->y() / 10),	Episode::color(query.value(0).toInt()));
+			painter->drawText(QRect(r.left() + rc4->height(),	r.top(),		rc4->y(),		r.height()),	Qt::AlignLeft | Qt::AlignVCenter, QString("%1 (%2)").arg(query.value(1).toString()).arg(m_apneas.num(query.value(0).toInt())));
+
+			++i;
+		}
+	}
+}
+
+void ReportDlg::initApnoeHistogram()
+{
+	m_apnoeHistogrammPixmap = QPixmap(m_apnoeHistogramm->size());//size());
+	m_apnoeHistogrammPixmap.fill(m_label_1, 0, 0);
+	QPainter painter_(&m_apnoeHistogrammPixmap);
+	painter_.initFrom(m_label_1);
+	painter_.fillRect(m_apnoeHistogramm->rect(), Qt::white);
+	painter_.setFont(*m_smallFontPixmap);
+
+	QRect rc1_(0,	10,		150,	240);/* Вывод подписи слева от гистограммы */
+	QRect rc2_(150, 10,		1750,	240);/* Вывод гистограммы событий апноэ */
+	QRect rc3_(150, 250,	1750,	50);/* Вывод шкалы времени под гистограммой */
+	QRect rc4_(150, 300,	1750,	50);/* Вывод легенды под гистограммой */
+	apnoeHistogramDraw(&painter_, &rc1_, &rc2_, &rc3_, &rc4_);
+
+	QStylePainter stylePainter(m_label_1);
+	stylePainter.drawPixmap(0, 0, m_apnoeHistogrammPixmap);
+	
+	//////////////Create Image for printing
+	QPainter painter(m_apnoeHistogramm);
+	painter.initFrom(this);
+	painter.setRenderHint(QPainter::Antialiasing);
+
+	painter.fillRect(m_apnoeHistogramm->rect(), Qt::white);
+
+	int logX = painter.paintEngine()->paintDevice()->physicalDpiX() * 10,
+		logY = painter.paintEngine()->paintDevice()->physicalDpiY() * 10;
+
+	painter.setFont(*m_smallFont);
+
+	QRect rc1(muldiv(0,		logX, 254), muldiv(10,	logY, 254), muldiv(150,		logX, 254), muldiv(240,	logY, 254));/* Вывод подписи слева от гистограммы */	
+	QRect rc2(muldiv(150,	logX, 254), muldiv(10,	logY, 254), muldiv(1750,	logX, 254), muldiv(240,	logY, 254));/* Вывод гистограммы событий апноэ */
+	QRect rc3(muldiv(150,	logX, 254), muldiv(250, logY, 254), muldiv(1750,	logX, 254), muldiv(50,	logY, 254));/* Вывод шкалы времени под гистограммой */
+	QRect rc4(muldiv(150,	logX, 254), muldiv(300, logY, 254), muldiv(1750,	logX, 254), muldiv(50,	logY, 254));/* Вывод легенды под гистограммой */
+	apnoeHistogramDraw(&painter, &rc1, &rc2, &rc3, &rc4);
+
+	///* Вывод подписи слева от гистограммы */ {
+	//	QRect rc(muldiv(0, logX, 254), muldiv(10, logY, 254), muldiv(150, logX, 254), muldiv(240, logY, 254));
+	//	
+	//	for (int i = 100; i >= 0; i -= 25)
+	//	{
+	//		int y = rc.bottom() - muldiv(i, rc.height(), 100);
+	//		painter.drawLine(rc.right() - rc.width()/20,		y,					rc.right(),					y);
+	//		painter.drawText(QRect(rc.right() - rc.width() / 2, y - rc.width() / 8, muldiv(rc.width(), 9, 20),	rc.width() / 4), Qt::AlignCenter, QString("%1").arg(i));
+	//	}
+	//	
+	//	/*
+	//						|---|
+	//						|   |
+	//		|--------|	=>	|   |
+	//		|        |		|   |
+	//		x--------|		x___|
+	//	*/
+
+	//	QTransform old = painter.transform();
+	//	painter.translate(rc.bottomLeft());
+	//	painter.rotate(-90);
+	//	painter.drawText(QRect(0, 0, rc.height(), rc.width()/2), Qt::AlignCenter, tr("Длительность\r\n(сек)"));
+	//	painter.setTransform(old);
+	//}
+
+	///* Вывод гистограммы событий апноэ */ {
+	//	QRect rc(muldiv(150, logX, 254), muldiv(10, logY, 254), muldiv(1750, logX, 254), muldiv(240, logY, 254));
+
+	//	EnvironmentPtr pEnv;
+	//	int totalSecs = pEnv->secsTotal();
+	//	
+	//	struct process_interval
+	//	{
+	//		struct len_summ
+	//		{
+	//			int operator()(int prev, const Episode *elem)
+	//			{
+	//				return prev + elem->length();
+	//			}
+	//		} lsumm;
+
+	//		void operator()(QPainter *painter, int h, int bsec, int esec, int type, QRect &r)
+	//		{
+	//			QSqlQuery			query;
+	//			QVector<Episode *>	episodes;
+	//			query.prepare("SELECT * FROM episodes WHERE bsec BETWEEN ? AND ? AND type = ?;");
+	//			query.addBindValue(bsec);
+	//			query.addBindValue(esec);
+	//			query.addBindValue(type);
+	//			query.exec();
+	//			while (query.next())
+	//			{
+	//				episodes.push_back(new Episode(query));
+	//			}
+
+	//			if (int sum = std::accumulate(episodes.begin(), episodes.end(), 0, lsumm))
+	//			{
+	//				r.setBottom(r.top());
+	//				r.setTop(r.bottom() - episodes.size() * 10);//muldiv((sum * 100) / (esec - bsec), h, 100));
+	//				painter->fillRect(r, (*episodes.begin())->color());
+	//				painter->drawRect(r);
+	//			}
+
+	//			qDeleteAll(episodes.begin(), episodes.end());
+	//		}
+	//	} process;
+
+	//	const int step = 60 * 5; // пять минут
+	//	for (int i = 0; i < totalSecs; i += step)
+	//	{
+	//		QRect r(rc.left() + muldiv(i, rc.width(), totalSecs), rc.bottom(), muldiv(step, rc.width(), totalSecs), rc.bottom());
+
+	//		process(&painter, rc.height(), i, i + step, Episode::CentrApnea,	r);
+	//		process(&painter, rc.height(), i, i + step, Episode::ObstrApnea,	r);
+	//		process(&painter, rc.height(), i, i + step, Episode::Hypopnea,		r);
+	//	}
+	//	
+	//	painter.drawRect(rc);
+	//}
+
+	///* Вывод шкалы времени под гистограммой */ {
+	//	QRect rc(muldiv(150, logX, 254), muldiv(250, logY, 254), muldiv(1750, logX, 254), muldiv(50, logY, 254));
+	//	drawTimeScale(&painter, rc);
+	//}
+
+	///* Вывод легенды под гистограммой */ {
+	//	QRect rc(muldiv(150, logX, 254), muldiv(300, logY, 254), muldiv(1750, logX, 254), muldiv(50, logY, 254));
+
+	//	QSqlQuery query;
+	//	query.prepare("SELECT * FROM types WHERE id BETWEEN ? AND ?");
+	//	query.addBindValue(Episode::Hypopnea);
+	//	query.addBindValue(Episode::ObstrApnea);
+	//	query.exec();
+
+	//	int i = 0;
+	//	while (query.next())
+	//	{
+	//		QRect r(rc.left() + i * muldiv(350, logX, 254), rc.top(), muldiv(350, logX, 254), rc.height());
+	//		
+	//		painter.fillRect(QRect(r.left() + muldiv(10, logX, 254), r.top() + muldiv(10, logY, 254),	muldiv(30, logX, 254),	muldiv(30, logY, 254)),	Episode::color(query.value(0).toInt()));
+	//		painter.drawText(QRect(r.left() + muldiv(50, logX, 254), r.top(),							muldiv(300, logX, 254),	r.height()),			Qt::AlignLeft | Qt::AlignVCenter, QString("%1 (%2)").arg(query.value(1).toString()).arg(m_apneas.num(query.value(0).toInt())));
+
+	//		++i;
+	//	}
+	//}
+
+	painter.end();
+}
+
+void ReportDlg::positionGraphDraw(QPainter *painter, QRect *rc1, QRect *rc2, QRect *rc3, QRect *rc4)
+{
+	/* Вывод графика "Положение тела" */ {
+		painter->drawRect(*rc1);
+
+		EnvironmentPtr	pEnv;
+		TrendsPtr		ptr;
+		Trend			*trend = ptr->trends().at(POSE);
+		trend->draw(painter, *rc2,	0, pEnv->secsTotal());
+	}
+
+	/* Вывод шкалы слева от графика "Положение тела" */ {
+		
+
+		int segment = rc3->height() / Pose::MaxPose;
+		for (int i = Pose::Standing; i < Pose::MaxPose; ++i)
+		{
+			painter->drawLine(rc3->right() - rc3->width() / 20,	rc3->top() + (segment * i) + segment / 2, rc3->right(),				rc3->top() + (segment * i) + segment / 2);
+			painter->drawText(QRect(rc3->left(),				rc3->top() + (segment * i),				(rc3->width() * 3) / 4,	segment), Qt::AlignRight | Qt::AlignVCenter, Pose::name(i).toUpper());
+		}
+	}
+
+	/* Вывод шкалы времени под графиком */ {
+		drawTimeScale(painter, *rc4);
+	}
+}
+
+void ReportDlg::initPositionGraph()
+{
+	m_positionGraphPixmap = QPixmap(m_positionGraph->size());
+	m_positionGraphPixmap.fill(m_label_2, 0, 0);
+	QPainter painter_(&m_positionGraphPixmap);
+	painter_.initFrom(m_label_2);
+	painter_.fillRect(m_positionGraph->rect(), Qt::white);
+	painter_.setFont(*m_smallFontPixmap);
+	painter_.setPen(Qt::black);
+
+	QRect	rc1_(150, 0, 1750, 250),/* Вывод графика "Положение тела" */
+			rc2_(150, 5, 1750, 245);
+	QRect	rc3_(0, 5, 150, 245);/* Вывод шкалы слева от графика "Положение тела" */
+	QRect	rc4_(150, 250, 1750, 50);/* Вывод шкалы времени под графиком */
+	positionGraphDraw(&painter_, &rc1_, &rc2_, &rc3_, &rc4_);
+	QStylePainter stylePainter(m_label_1);
+	stylePainter.drawPixmap(0, 0, m_positionGraphPixmap);
+
+
+	//////////////Create Image for printing
+	
+	QPainter painter(m_positionGraph);
+	painter.initFrom(this);
+	painter.setRenderHint(QPainter::Antialiasing);
+	painter.setFont(*m_smallFont);
+	painter.fillRect(m_positionGraph->rect(), Qt::white);
+
+	int logX = painter.paintEngine()->paintDevice()->physicalDpiX() * 10,
+		logY = painter.paintEngine()->paintDevice()->physicalDpiY() * 10;
+
+	painter.setPen(Qt::black);
+	
+	QRect	rc1(muldiv(150, logX, 254), muldiv(0, logY, 254), muldiv(1750, logX, 254), muldiv(250, logY, 254)),/* Вывод графика "Положение тела" */
+			rc2(muldiv(150, logX, 254),	muldiv(5, logY, 254), muldiv(1750, logX, 254), muldiv(245, logY, 254));
+	QRect rc3(muldiv(0, logX, 254), muldiv(5, logY, 254), muldiv(150, logX, 254), muldiv(245, logY, 254));/* Вывод шкалы слева от графика "Положение тела" */
+	QRect rc4(muldiv(150, logX, 254), muldiv(250, logY, 254), muldiv(1750, logX, 254), muldiv(50, logY, 254));/* Вывод шкалы времени под графиком */
+
+	positionGraphDraw(&painter, &rc1, &rc2, &rc3, &rc4);
+
+	painter.end();
+}

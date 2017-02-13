@@ -1,0 +1,128 @@
+#include "trending.h"
+
+#include "customprintpreviewdialog.h"
+#include <QtGui/QPainter>
+#include <QtGui/QPrinter>
+#include <QtGui/QPaintEngine>
+//#include <QtGui/QPrintPreviewDialog>
+#include <QtGui/QPrintDialog>
+#include <QtGui/QFileDialog>
+#include <QtGui/QDesktopWidget>
+
+#include "report.h"
+#include "misc/muldiv.h"
+#include "trends/trends.h"
+#include "main/environment.h"
+
+TrendingDlg::TrendingDlg(QWidget *parent)
+:	QDialog(parent),
+	m_printer(new QPrinter)
+{
+	setupUi(this);
+}
+
+TrendingDlg::~TrendingDlg()
+{
+	delete m_printer;
+}
+
+//#include <QtGui/QToolBar>
+
+void TrendingDlg::preview()
+{
+	/*QPrintPreviewDialog dlg;
+
+	QList<QToolBar *> toolbarlist = dlg.findChildren<QToolBar *>();
+	if (!toolbarlist.isEmpty())
+	{
+		//disable
+		//toolbarlist.first()->actions().at(3)->setDisabled(true);
+		//or to remove:
+		//toolbarlist.first()->removeAction(toolbarlist.first()->actions().at(3));
+		
+		//alternatively you can add actions to the toolbar:
+		toolbarlist.first()->addAction(QIcon(":/MainWnd/filesaveas.png"), tr("Save as"));
+		connect(toolbarlist.first()->actions().last(), SIGNAL(triggered()), this, SLOT(saveas()));
+	}
+
+	QRect rc(QApplication::desktop()->screenGeometry());
+	dlg.setGeometry(muldiv(rc.width(), 1, 10), muldiv(rc.height(), 1, 10), muldiv(rc.width(), 8, 10), muldiv(rc.height(), 8, 10));
+	connect(&dlg, SIGNAL(paintRequested(QPrinter *)), this, SLOT(draw(QPrinter *)));
+	dlg.exec();*/
+	CustomPrintPreviewDialog previewDlg(new QPrinter, this);
+	previewDlg.exec();
+}
+
+void TrendingDlg::paint(QPrinter *printer)
+{
+	QPainter painter(printer);
+
+	int logX = painter.paintEngine()->paintDevice()->physicalDpiX() * 10;
+	int logY = painter.paintEngine()->paintDevice()->physicalDpiY() * 10;
+
+	QFont baseFont("Arial", muldiv(25, logY, inch));
+	QFont boldFont("Arial", muldiv(25, logY, inch), QFont::Bold);
+	QFont smalFont("Arial", muldiv(12, logY, inch));
+
+	painter.setWindow(0, 0, muldiv(2100, logX, inch), muldiv(2970, logY, inch));
+	painter.setFont(baseFont);
+
+	/* Вывод заголовка */ {
+		QRect rc(muldiv(100, logX, inch), muldiv(100, logY, inch), muldiv(1900, logX, inch), muldiv(50, logY, inch));
+		painter.drawRect(rc);
+		painter.drawText(rc, Qt::AlignCenter, tr("Astrocard Somno Studio - Тренды"));
+	}
+
+	ReportDlg::printPatientInfo(&painter);
+
+	EnvironmentPtr	pEnv;
+	TrendsPtr		trendsPtr;
+	int				yPos		= 500;
+	for (int i = POSE; i < MAX_TREND; ++i)
+	{
+		QRect rcHead(muldiv(100, logX, inch), muldiv(yPos + 50, logY, inch), muldiv(1900, logX, inch), muldiv(50, logY, inch));
+
+		painter.setFont(boldFont);
+		painter.drawText(rcHead, Qt::AlignLeft|Qt::AlignVCenter, trendsPtr->trends().at(i)->title());
+
+		QRect rcGrid(muldiv(150, logX, inch), muldiv(yPos + 150, logY, inch), muldiv(1850, logX, inch), muldiv(300, logY, inch));
+
+		painter.setFont(smalFont);
+
+		trendsPtr->trends()[i]->drawScale(&painter, QRect(muldiv(100, logX, inch), muldiv(yPos + 150, logY, inch), muldiv(50, logX, inch), muldiv(300, logY, inch)), rcGrid);
+
+		ReportDlg::drawTimeScale(&painter, QRect(muldiv(150, logX, inch), muldiv(yPos + 450, logY, inch), muldiv(1850, logX, inch), muldiv(50, logY, inch)), rcGrid);
+
+		painter.drawRect(rcGrid);
+
+		trendsPtr->trends()[i]->draw(&painter, rcGrid, 0, pEnv->secsTotal());
+
+		yPos += 500;
+	}
+}
+
+void TrendingDlg::print()
+{
+	QPrintDialog printDlg(m_printer, this);
+	if (printDlg.exec())
+	{
+		paint(m_printer);
+	}
+}
+
+/*void TrendingDlg::saveas()
+{
+	QString fn = QFileDialog::getSaveFileName(this, tr("Сохранить PDF как..."), ".\\PDF", tr("Файлы PDF (*.pdf)"));
+	if (!fn.isEmpty())
+	{
+		if (!fn.endsWith(".pdf", Qt::CaseInsensitive))
+		{
+			fn += ".pdf";
+		}
+
+		QPrinter printerPDF;// (QPrinter::HighResolution);
+		printerPDF.setOutputFormat(QPrinter::PdfFormat);
+		printerPDF.setOutputFileName(fn);
+		draw(&printerPDF);
+	}	
+}*/

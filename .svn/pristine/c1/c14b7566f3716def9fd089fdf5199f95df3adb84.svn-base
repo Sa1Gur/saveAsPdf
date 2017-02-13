@@ -1,0 +1,82 @@
+#ifndef MAINWND_H
+#define MAINWND_H
+
+#include <QtGui/QMainWindow>
+#include "ui_mainwnd.h"
+
+#include "environment.h"
+#include "widgets/timewnd.h"
+
+QT_FORWARD_DECLARE_CLASS(QSplitter)
+QT_FORWARD_DECLARE_CLASS(QVBoxLayout)
+QT_FORWARD_DECLARE_CLASS(QLabel)
+
+class MainWnd: public QMainWindow
+{
+	Q_OBJECT
+
+public:
+	MainWnd(QWidget *parent = 0, Qt::WFlags flags = 0);
+	~MainWnd();
+
+signals:
+	void preUpdateView();
+	void postUpdateView();
+
+public Q_SLOTS:
+	void compressView();
+	void expandView();
+	void compressTrend();
+	void expandTrend();
+	void settingsDlg();
+	void episodesDlg();
+	void markBasicEvents();
+	void callHolter();
+	void callDatabase();
+	void callReader();
+	void appClose();
+	void turnMarkMode();
+	void reportDlg();
+	void aboutDlg();
+	void updateView();
+	void trendingDlg();
+	void conclusionDlg();
+	void colorsDlg();
+	void templatesDlg();
+	void channelsDlg();
+	void printTrends();
+	void printScreen();
+
+protected:
+	void closeEvent(QCloseEvent *e);
+	void keyPressEvent(QKeyEvent *e);
+	void wheelEvent(QWheelEvent *e);
+
+	void writeSettings();
+	void readSettings();
+
+	Ui::MainWndClass		ui;
+	QWidgetList				dataWnd;
+	QVector<MsPerScreen>	scales;
+	QVector<MsPerScreen>::const_iterator currentScale;
+	TimeWnd					*timeWnd;
+	QWidget					*trendWnd;
+	QSplitter				*splitter;
+	QVBoxLayout				*mainLayout;
+
+#ifdef _DEBUG
+	QLabel *currentSecond,
+			*currentSample,
+			*currentData[MaxData];
+#endif
+
+	QLabel *spo2Value;
+	QLabel *pulseValue;
+	QLabel *respValue;
+	QLabel *modeIcon;
+	QLabel *modeText;
+	QLabel *startValue;
+	QLabel *screenValue;
+};
+
+#endif // MAINWND_H

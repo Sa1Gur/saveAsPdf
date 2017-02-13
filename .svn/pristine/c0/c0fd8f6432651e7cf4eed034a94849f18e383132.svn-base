@@ -1,0 +1,219 @@
+#include "datawnd.h"
+#include <QtGui/QStylePainter>
+#include <QtGui/QResizeEvent>
+#include "episodetypeselectwnd.h"
+
+DataWnd::DataWnd(int index, QWidget *parent)
+:	QWidget(parent),
+	m_curve(new DataCurve(index)),
+	m_index(index)
+{
+	setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+	setFocusPolicy(Qt::StrongFocus);
+
+	m_layout = new QHBoxLayout();
+
+	Scale::UnitList scales;
+	scales.push_back(Scale::UnitList::value_type("0.25",	"125 мкВ"));
+	scales.push_back(Scale::UnitList::value_type("0.5",		"250 мкВ"));
+	scales.push_back(Scale::UnitList::value_type("1.0",		"500 мкВ"));
+	scales.push_back(Scale::UnitList::value_type("2.0",		"1 мВ"));
+	scales.push_back(Scale::UnitList::value_type("4.0",		"2 мВ"));
+	scales.push_back(Scale::UnitList::value_type("10.0",	"5 мВ"));
+	const int startIndex = 4;
+	m_scale = new ScaleWnd(index, scales, startIndex);
+	m_scale->setWindowTitle(m_scale->windowTitle().trimmed() + tr(", мВ"));
+
+	m_view = new QWidget();
+	m_layout->addWidget(m_scale);
+	m_layout->addWidget(m_view);
+	m_layout->setContentsMargins(0, 0, 0, 0);
+	m_layout->setSpacing(0);
+
+	EnvironmentPtr pEnv;
+	if (pEnv->testOption(chooseDefaultEpisodeTypeWidget))
+	{
+		QWidget *cdet = new EpisodeTypeSelectWidget(index);
+		m_layout->addWidget(cdet);
+		connect(cdet, SIGNAL(doUpdateView()), this,	SIGNAL(doUpdateView()));
+	}
+
+	setLayout(m_layout);
+
+	m_view->installEventFilter(this);
+	setScale(*(scales.begin() + startIndex));
+	connect(m_scale, SIGNAL(scaleChanged(Scale::Unit)), this, SLOT(setScale(Scale::Unit)));
+}
+
+DataWnd::~DataWnd()
+{
+	delete m_curve;
+}
+
+void DataWnd::placeEpisodes()
+{
+	EnvironmentPtr	pEnv;
+	int				start	= pEnv->currentSecond();
+	int				end		= start + pEnv->secsPerScreen();
+
+	QSqlQuery		query;
+	query.prepare("SELECT * FROM episodes WHERE ((bsec BETWEEN ? AND ?) OR (esec BETWEEN ? AND ?) OR (bsec <= ? AND ? <= esec));");
+	//query.prepare("SELECT * FROM episodes WHERE (type = ?) AND ((bsec BETWEEN ? AND ?) OR (esec BETWEEN ? AND ?) OR (bsec <= ? AND ? <= esec));");
+	//query.addBindValue(pEnv->episodeType(m_index));
+	query.addBindValue(start);
+	query.addBindValue(end);
+	query.addBindValue(start);
+	query.addBindValue(end);
+	query.addBindValue(start);
+	query.addBindValue(end);
+	query.exec();
+
+	while (query.next())
+	{
+		Episode	e(query);
+		if ((1<<e.type()) & pEnv->episodeShow(m_index))
+		{
+			m_ews.push_back(new EpisodeWnd(e, m_view, this));
+
+			m_ews.last()->setGeometry(((e.bsec() - start) * m_view->rect().width()) / ((qint64)pEnv->secsPerScreen()), 1, (e.length() * m_view->rect().width()) / pEnv->secsPerScreen(), m_view->rect().height() - 3);
+			m_ews.last()->show();
+		}
+	}
+
+	query.clear();
+}
+
+void DataWnd::clearEpisodes()
+{
+	qDeleteAll(m_ews);
+	m_ews.clear();
+}
+
+/*!
+	Задает идеальный минимальный размер виджета
+*/
+QSize DataWnd::minimumSizeHint() const
+{
+	return QSize(500, 80);
+}
+
+/*!
+	Устанавливает идеальный размер виджета
+*/
+QSize DataWnd::sizeHint() const
+{
+	return QSize(1000, 90);
+}
+
+void DataWnd::scale_Change(int Index)
+{
+	switch (Index)
+	{
+	case -1:
+		{
+			m_scale->zoomOut();
+		}
+		break;
+	case 1:
+		{
+			m_scale->zoomIn();
+		}
+		break;
+	}
+}
+
+void DataWnd::setScale(const Scale::Unit &scale)
+{
+	m_curve->setZoom(scale.first.toDouble());
+	m_view->update();
+}
+
+void DataWnd::resizeEvent(QResizeEvent *event)
+{
+	EnvironmentPtr pEnv;
+	for (int i = 0; i < m_ews.size(); ++i)
+	{
+		QVariant	bsec	= m_ews[i]->property("bsec"),
+					length	= m_ews[i]->property("length");
+		m_ews[i]->setGeometry(((bsec.toInt() - pEnv->currentSecond()) * m_view->rect().width()) / pEnv->secsPerScreen(), m_view->rect().top() + 1, (length.toInt() * m_view->rect().width()) / pEnv->secsPerScreen(), m_view->geometry().height() - 2);
+	}
+}
+
+bool DataWnd::eventFilter(QObject *target, QEvent *e)
+{
+	bool needUpdate = false;
+	if (target == m_view)
+	{
+		if (e->type() == QEvent::Paint)
+		{
+			needUpdate = true;
+		}
+		else if (e->type() == QEvent::MouseButtonPress)
+		{
+			QMouseEvent *me = dynamic_cast<QMouseEvent *>(e);
+
+			if (me->buttons() & Qt::LeftButton)
+			{
+				EnvironmentPtr pEnv;
+				if (pEnv->testOption(MarkMode))
+				{
+					int bsec = pEnv->currentSecond() + (me->pos().x() * pEnv->secsPerScreen()) / m_view->width();//,
+						//kind = QApplication::keyboardModifiers().testFlag(Qt::ControlModifier) ? Episode::Hypopnea : Episode::ObstrApnea;//Если зажат Ctrl гипопноэ, иначе обструктивное
+					
+					Episode episode(bsec, bsec + 10, pEnv->episodeType(m_index));
+					if (episode.insert())
+					{
+						m_ews.push_back(new EpisodeWnd(episode, m_view, this));
+						m_ews.last()->setGeometry(((episode.bsec() - pEnv->currentSecond()) * m_view->rect().width()) / pEnv->secsPerScreen(), m_view->rect().top() + 1, (episode.length() * m_view->rect().width()) / pEnv->secsPerScreen(), m_view->rect().height() - 2);
+						m_ews.last()->show();
+
+						emit doUpdateView();
+					}
+				}
+			}
+		}
+	}
+	
+	bool res = QWidget::eventFilter(target, e);
+
+	if (needUpdate)
+	{
+		onPaintView();
+	}
+
+	return res;
+}
+
+void DataWnd::onPaintView()
+{
+	m_pixmap = QPixmap(size());
+	m_pixmap.fill(m_view, 0, 0);
+	QPainter painter(&m_pixmap);
+	painter.initFrom(m_view);
+
+	EnvironmentPtr pEnv;
+	m_curve->setSampleCount(pEnv->samplePerScreen());
+	m_curve->setSampleStart(pEnv->currentSample());
+
+	ColorScheme cs = pEnv->colorScheme(m_curve->index());
+	painter.fillRect(m_view->rect(), cs.second);
+	painter.setPen(cs.first);
+
+	m_curve->draw(&painter, m_view->rect());
+
+	QStylePainter stylePainter(m_view);
+	stylePainter.drawPixmap(0, 0, m_pixmap);
+}
+
+void DataWnd::deleteEpisode(Episode episode)
+{
+	for (int i = 0; i < m_ews.size(); i++)
+	{		
+		if (m_ews[i]->getEpisodeId() == episode.id())
+		{
+			m_ews.removeAt(i);
+			emit doUpdateView();
+			break;
+		}
+	}
+}

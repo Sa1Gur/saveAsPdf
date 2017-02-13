@@ -1,0 +1,9 @@
+TEMPLATE        = lib
+CONFIG         += designer plugin release
+HEADERS         = richedit.h \
+                  richeditplugin.h
+SOURCES         = richedit.cpp \
+                  richeditplugin.cpp
+
+RESOURCES      += richedit.qrc
+DESTDIR         = c:/Qt/4.7.3/plugins/designer

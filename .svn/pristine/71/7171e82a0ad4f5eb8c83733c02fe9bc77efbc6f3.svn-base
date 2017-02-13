@@ -1,0 +1,45 @@
+#ifndef TREND_H
+#define TREND_H
+
+#include <QtCore/QString>
+#include <QtGui/QColor>
+#include <QtCore/QRect>
+#include <QtCore/QVector>
+#include <QtGui/QPainter>
+
+class Trend
+{
+public:
+	typedef QVector<uchar> Values;
+	
+	Trend(const QString &title, const QColor &color, int secPerUnit, uchar resval, uchar gradation);
+	virtual ~Trend() = 0;
+
+	const QString &title() const;
+	const QColor &color() const;
+	int	secPerUnit() const;
+	virtual void draw(QPainter *painter, const QRect &rect, int start, int stop) const;
+	virtual void drawScale(QPainter *painter, const QRect &rect, const QRect &ext = QRect()) const;
+	const Values &values() const;
+	const Values &chanval() const;
+	const Values &smoothed() const;
+	uchar fakeValue() const;
+	uchar gradation() const;
+
+protected:
+	void compress();
+
+protected:
+	Values m_values;
+	Values m_chanval;
+	Values m_smoothed;
+
+private:
+	QString m_title;
+	QColor	m_color;
+	int m_secPerUnit;
+	uchar m_resval;
+	uchar m_gradation;
+};
+
+#endif // TREND_H

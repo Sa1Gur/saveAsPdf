@@ -1,0 +1,27 @@
+#ifndef BODYPOSITIONCOLORWND_H
+#define BODYPOSITIONCOLORWND_H
+
+#include <QtGui/QWidget>
+#include <QtGui/QLabel>
+
+class BodyPositionColorWidget : public QWidget
+{
+	Q_OBJECT
+
+public:
+	BodyPositionColorWidget(QWidget *parent = 0);
+};
+
+class CurrentPositionColorWidget : public QWidget
+{
+	Q_OBJECT
+
+public:
+	CurrentPositionColorWidget(QWidget *parent = 0);
+	void updatePos(int);
+protected:
+	QPalette	colorsPalette;
+	QLabel		*colorsLabel;
+};
+
+#endif // BODYPOSITIONCOLORWND_H

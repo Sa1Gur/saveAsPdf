@@ -1,0 +1,241 @@
+#ifndef ENVIRONMENT_H
+#define ENVIRONMENT_H
+
+#include <QtCore/QString>
+#include <QtCore/QVector>
+#include <QtCore/QDateTime>
+#include <QtCore/QPair>
+#include <QtGui/QColor>
+#include <QtCore/QBitArray>
+
+enum DataIndex {
+	Rt, Eeg4, Eeg3, Eeg2, Eeg1, Okg2, Okg1, Emg2,
+	Emg1, Rsp2, Rsp1, Diff, Z, Y, X, Mic,
+	Cann, Nois, Red, Ir, I, II, III, avR,
+	avL, avF, v1, v2, v3, v4, v5, v6, MaxData
+};
+
+typedef QVector<float> RawData;
+
+enum MsPerScreen
+{
+	ONE_SEC		= 1000,
+	TWO_SEC		= 2000,
+	FOUR_SEC	= 4000,
+	EIGHT_SEC	= 8000,
+	SIXTEEN_SEC	= 16000,
+	FORTY_SEC	= 40000,
+	ONE_MIN		= 60000,
+	TWO_MIN		= 120000,
+	TEN_MIN		= 600000
+};
+
+struct Spo2Params
+{
+	enum {
+		fakeValue	= 0,
+		maxValue	= 100
+	};
+
+	RawData::value_type rightDataLevel;
+
+	// --- Анализ десатурации --- //
+	bool automatic;
+	bool artifact;			// Считаться ли с перерывами на артефакты
+	int  toleranceLenght;	// Количество эпизодов не противоречащих продолжению
+	int  toleranceCount;	// Количество раз, которое мы готовы столько терпеть
+	int  toleranceDepth;	// На сколько может подняться значение во время десатурации
+	int  decreaseDepth;		// На сколько может опуститься значение в промежутке между двумя сатурациями
+	int  minDesaturationLenght;
+	int  maxDesaturationLenght;
+	uchar minFalling;
+	uchar treshold;
+
+	Spo2Params();	// параметры по умолчанию
+};
+
+struct HypoParams
+{
+	enum Methods {
+		Relative, Reference
+	};
+
+	// --- Анализ гипопноэ --- //
+	bool	automatic;
+	int		method;						// метод вычисления
+	int		relativeLength;				// длина относительного интервала
+	int		referenceStart;				// начало опорного интервала, сэмплы
+	int		referenceEnd;				// конец относительного интервала, сэмплы
+	int		fallingPercent;				// падение амплитуды в процентах
+	int		minDuration;				// минимальная продолжительность эпизода, сек
+	int		maxDuration;				// максимальная продолжительность эпизода, сек
+	bool	hypoAfterDesaturationMode;	// считать гипопноэ только при последующей десатурации
+	int		hypoAfterDesaturationLength;// десатурация должна начаться минимум через hypoAfterDesaturationLength сек. после начала гипопноэ
+
+	HypoParams();			// параметры по умолчанию
+
+	qreal percentValue() const;
+};
+
+struct ReportParams
+{
+	int minSpo2Val;//значение Spo2 все значения меньше которого fakeval
+	int minPulseVal;//значение пульса все значения меньше которого fakeval
+	int maxPrecision;//с точностью до какого знака выдавать данные в отчете
+	int minSpo2Local;//значение Spo2 все значения меньше которого fakeval для конкретно этой записи
+	int minPulseLocal;//значение пульса все значения меньше которого fakeval для конкретно этой записи
+	ReportParams();			// параметры по умолчанию
+};
+
+enum OptionIndex {
+	FullMode,	// режим полного исследования
+	ShowRed,	// показать осциллограмму канала RED
+	ShowIr,		// показать осциллограмму канала IR
+	MarkMode,	// режим отметки событий
+	ShowX,		// показать осциллограмму X от датчика позиции
+	chooseDefaultEpisodeTypeWidget,//показать меню выбора типа эпизода по умолчанию
+	MaxOptions	// количество опций
+};
+#undef	AstroCmd_code
+enum AstroAppCodes {
+	AstroCmd_code	= 0,
+	ExitCode		= 1,
+	HolterCode		= 11,
+	DatabaseCode	= 3,
+	ReadCode		= 5
+};
+
+/*!
+	Color scheme for data channel
+	first - foreground color
+	second - background color
+*/
+typedef QPair<QColor, QColor> ColorScheme;
+typedef QVector<ColorScheme> ColorSchemes;
+
+#include "misc/singleton.h"
+
+class Environment: public Singleton<Environment>
+{
+public:
+	///PatientInfo ra\elated functions ->
+	QString patientName()		const;
+	void	setPatientName(const QString &nameText) const;
+
+	QString patientSex()		const;
+	void	setPatientSex(const QString &sexText) const;
+
+	quint32 patientAge()		const;
+	void	setPatientAge(const quint32 age) const;
+	
+	quint32 patientHeight()		const;
+	void	setPatientHeight(const quint32 height) const;
+
+	quint32 patientWeight()		const;
+	void	setPatientWeight(const quint32 weight) const;
+
+	QString patientAddress()	const;
+	void	setPatientAddress(const QString &addressText) const;
+	
+	QString patientPhone()		const;
+	void	setPatientPhone(const QString &purposeText) const;
+
+	QString patientPurpose()	const;
+	void	setPatientPurpose(const QString &purposeText) const;
+		
+	QString patientDepartment()	const;
+	void	setPatientDepartment(const QString &departmentText) const;
+
+	QString patientWard()		const;
+	void	setPatientWard(const QString &wardText) const;
+
+	QString patientPhysician()		const;
+	void	setPatientPhysician(const QString &doctorName) const;
+
+	QDate	inspectionDate()	const;
+	void	setInspectionDate(const QDate date) const;
+
+	QDate	analysisDate()		const;
+	void	setAnalysisDate(const QDate date) const;
+	///PatientInfo ra\elated functions <-
+
+	qreal	load(int n, quint32 start, RawData &data) const;
+
+	quint32 secsTotal() const;
+	quint32 sampleTotal() const;
+
+	QString channelTitle(int n) const;
+
+	quint32 startSample() const;
+	QDateTime startTime() const;
+
+	QString	createPath(const QString &filename) const;
+
+	quint32 msec2sample(quint32 ms) const;
+	quint32 sec2sample(quint32 sec) const;
+	QDateTime sample2NativTime(quint32 sample) const;
+	quint32 nativTime2sample(const QDateTime &t) const;
+	quint32 sample2secs(quint32 sample) const;
+	quint32 sample2msecs(quint32 sample) const;
+	
+	quint32 msecsPerScreen() const;
+	quint32 secsPerScreen() const;
+	quint32 samplePerScreen() const;
+	void setScreenTime(int ms);
+
+	quint32 currentSample() const;
+	quint32 currentSecond() const;
+	QDateTime currentTime() const;
+	void setCurrentSample(int sample);
+	void setCurrentTime(const QDateTime &t);
+
+	QString episodeTitle(int n) const;
+
+	void spo2Params(Spo2Params &params) const;
+	void setSpo2Params(const Spo2Params &params);
+
+	void hypoParams(HypoParams &params) const;
+	void setHypoParams(const HypoParams &params);
+
+	void reportParams(ReportParams &params) const;
+	void setReportParams(const ReportParams &params);
+
+	bool testOption(OptionIndex index) const;
+	void setOption(OptionIndex index, bool value);
+
+	bool isVisible(DataIndex index) const;
+	void setVisible(DataIndex index, bool visible);
+	const QBitArray &dataMask() const;
+	void setDataMask(const QBitArray &mask);
+
+	bool nextEvent(quint32 &msec) const;
+
+	void setNextApp(int app);
+
+	const ColorScheme &colorScheme(int index) const;
+	void setColorScheme(int index, const ColorScheme &cs);
+	const ColorSchemes &colorSchemes() const;
+	void setColorSchemes(const ColorSchemes &cs);
+
+	int	episodeType(int channel);
+	int	episodeMinLength(int type);
+	void setEpisodeType(int channel, int episodeType);
+	int	episodeShow(int channel);
+	void setEpisodeShow(int channel, int episodeType);
+	void episodeTypeParams();
+	void setEpisodeTypeParams();
+
+protected:
+	Environment();
+	~Environment();
+	friend class Singleton<Environment>;
+	static const int minLength_ = 3;//10; // s
+
+private:
+	struct EnvironmentImpl;
+	EnvironmentImpl* pimpl;
+};
+
+typedef SingletonPtr<Environment> EnvironmentPtr;
+
+#endif // ENVIRONMENT_H

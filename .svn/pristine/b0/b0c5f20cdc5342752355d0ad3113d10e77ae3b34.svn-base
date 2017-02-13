@@ -1,0 +1,27 @@
+#ifndef COLORS_H
+#define COLORS_H
+
+#include "ui_colors.h"
+#include "main/environment.h"
+
+class ColorsDlg: public QDialog, public Ui::ColorsForm
+{
+	Q_OBJECT
+
+public:
+	ColorsDlg(QWidget *parent = 0);
+
+public Q_SLOTS:
+	void selectionChanged(int index);
+	void foregroundChanged();
+	void backgroundChanged();
+	void accept();
+
+protected:
+	void changeColor(QLabel *label, const QColor &color);
+
+private:
+	ColorSchemes m_colors;
+};
+
+#endif // COLORS_H

@@ -1,0 +1,97 @@
+#ifndef EVENT_H
+#define EVENT_H
+
+#include <QtGui/QColor>
+#include <QtSql/QSqlQuery>
+#include <QtCore/QVariant>
+
+class Episode
+{
+public:
+	enum Field { Id, BegSec, EndSec, Type, BegVal, EndVal };
+	
+	enum Kind {
+		Wake,
+		Dream,
+		Artefacts,
+		Desaturation,
+		Hypopnea,
+		CentrApnea,
+		ObstrApnea,
+		All
+	};
+
+	Episode(int bsec, int esec, int kind, qreal bval = 0, qreal eval = 0);
+	Episode(const QSqlQuery &query);
+
+	static QColor color(int type);
+
+	int id() const;
+	int bsec() const;
+	int esec() const;
+	int type() const;
+	void setType(const int);
+	int minLength() const;
+	qreal bval() const;
+	qreal eval() const;
+	QString title() const;
+
+	void move_start(int msecs);
+	void add_to_end(int msecs);
+	void move_episode(int msecs);
+
+	int length() const;
+	QColor color() const;
+	bool contains(const Episode &other) const;
+	bool intersects(const Episode &other) const;
+	qreal diff() const;
+
+	QString text() const;
+	
+	// работа с базой данных
+	bool insert();
+	bool remove();
+	bool update();
+
+	bool followedBy(int sec, int type);
+	bool isConflicted() const;
+
+private:
+	int     id_;
+	int     bsec_;
+	int     esec_;
+	int     type_;
+	qreal   bval_;
+	qreal   eval_;
+	bool    id_valid_for_queries_;
+	QString title_;
+};
+
+inline int Episode::id() const
+{ return id_; }
+
+inline int Episode::bsec() const
+{ return bsec_; }
+
+inline int Episode::esec() const
+{ return esec_; }
+
+inline int Episode::type() const
+{ return type_; }
+
+inline qreal Episode::bval() const
+{ return  bval_; }
+
+inline qreal Episode::eval() const
+{ return eval_; }
+
+inline QString Episode::title() const
+{ return title_; }
+
+inline int Episode::length() const
+{ return (esec_ - bsec_); }
+
+inline QColor Episode::color() const
+{ return color(type_); }
+
+#endif // EVENT_H

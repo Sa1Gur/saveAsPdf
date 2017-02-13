@@ -1,0 +1,43 @@
+#ifndef PULSEWND_H
+#define PULSEWND_H
+
+#include <QtGui/QHBoxLayout>
+#include "scalewnd.h"
+#include "episodewnd.h"
+#include "channelwnd.h"
+
+class PulseWnd: public ChannelWnd//QWidget
+{
+	Q_OBJECT
+
+public:
+	PulseWnd(int index, QWidget *parent = 0);
+	~PulseWnd();
+
+signals:
+	void				doUpdateView();
+	void				delEp(Episode episode);
+
+public slots:
+	void				setScale(const Scale::Unit &range);
+	void				setZero(int  zero);
+	void				deleteEpisode(Episode episode);
+
+protected:
+	void				resizeEvent(QResizeEvent *event);
+	bool				eventFilter(QObject *target, QEvent *e);
+	void				onPaintView();
+	ScaleWnd*			PlaceScale(Scale::UnitList* ranges, int* startIndex);
+private:
+	//QHBoxLayout*		m_layout;
+	ScaleWnd*			m_range;
+	//QWidget*			m_view;
+	QPixmap				m_pixmap;
+	QList<EpisodeWnd *>	m_ews;
+	int					index,
+						m_upper,
+						m_lower;//,
+						//m_zero;
+};
+
+#endif // PULSEWND_H

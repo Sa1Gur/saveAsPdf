@@ -1,0 +1,257 @@
+#include <QtGui/QPushButton>
+#include <QtGui/QTextEdit>
+#include <QtGui/QHBoxLayout>
+#include <QtGui/QVBoxLayout>
+#include <QtGui/QComboBox>
+#include <QtGui/QFontComboBox>
+#include <QtGui/QApplication>
+#include <QtGui/QTextList>
+#include <QtCore/QTextCodec>
+#include <QtGui/QColorDialog>
+#include <QtCore/QFile>
+#include <QtGui/QTextDocumentWriter>
+#include <QtGui/QClipboard>
+#include <QtCore/QMimeData>
+#include <QtGui/QWheelEvent>
+
+#include "main/environment.h"
+#include "main/episode.h"
+#include "episodetypeselectwnd.h"
+
+EpisodeTypeSelectWidget::EpisodeTypeSelectWidget(int episodeType, QWidget *parent)
+:	m_episodeTypeWidth(50),
+	m_episodeType(episodeType)
+{
+	//setPalette(Qt::transparent);
+	//setAttribute(Qt::WA_TransparentForMouseEvents);
+	//setWindowFlags(Qt::WindowStaysOnTopHint);
+				
+	comboStyle = new QComboBox;
+	EnvironmentPtr pEnv;
+	for (int i = 0; i < Episode::All; i++)
+		comboStyle->addItem(pEnv->episodeTitle(i));
+	comboStyle->setCurrentIndex(pEnv->episodeType(episodeType));	
+	comboStyle->setFocusPolicy(Qt::NoFocus);
+	connect(comboStyle, SIGNAL(activated(int)), this, SLOT(textStyle(int)));
+		
+	//comboFont = new QFontComboBox;
+	//connect(comboFont, SIGNAL(activated(QString)), this, SLOT(textFamily(QString)));
+	
+	comboSize = new QComboBox;
+	comboSize->setObjectName("comboSize");
+	comboSize->setEditable(true);
+		
+	static const int spacingWidth = 10;
+	
+	QHBoxLayout *toolLayout = new QHBoxLayout;
+	toolLayout->addWidget(comboStyle);
+	//toolLayout->addWidget(comboFont);
+	toolLayout->addWidget(comboSize);
+	toolLayout->addSpacing(spacingWidth);
+	toolLayout->addSpacing(spacingWidth);
+	
+	QVBoxLayout *mainLayout = new QVBoxLayout;
+	mainLayout->addLayout(toolLayout);	
+
+	setLayout(mainLayout);
+
+	setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+	setFocusPolicy(Qt::StrongFocus);
+}
+
+EpisodeTypeSelectWidget::~EpisodeTypeSelectWidget()
+{
+}
+
+QSize EpisodeTypeSelectWidget::minimumSizeHint() const
+{
+	return QSize(100, 80);
+}
+
+int EpisodeTypeSelectWidget::titleWidth() const
+{
+	return m_titleWidth;
+}
+
+void EpisodeTypeSelectWidget::setTitleWidth(int width)
+{
+	m_titleWidth = width;
+	update();
+}
+
+int EpisodeTypeSelectWidget::episodeTypeWidth() const
+{
+	return m_episodeTypeWidth;
+}
+
+void EpisodeTypeSelectWidget::setEpisodeTypeWidth(int width)
+{
+	m_episodeTypeWidth = width;
+	update();
+}
+
+//void EpisodeTypeSelectWidget::paintEvent(QPaintEvent *e)
+//{
+	/*m_pixmap = QPixmap(size());
+	m_pixmap.fill(this, 0, 0);
+	QPainter painter(&m_pixmap);
+	painter.initFrom(this);
+
+	painter.setPen(palette().color(QPalette::Active, QPalette::WindowText));
+
+	m_scale->paint(&painter, QRect(rect().right() - scaleWidth(), rect().top(),	scaleWidth(), rect().height()), m_distance);
+
+	QRect trc;
+	trc.setCoords(rect().top() - rect().height() / 2,	rect().left(), rect().bottom() - rect().height() / 2, rect().left() + titleWidth());
+	painter.translate(0, rect().height() / 2);
+	painter.rotate(-90.0);
+	painter.drawText(trc, Qt::AlignCenter, windowTitle());
+	painter.rotate(90.0);
+	painter.translate(0, -rect().height() / 2);
+	
+	QRect trc1;
+	trc1.setCoords(rect().top() - rect().height() / 2,	rect().left() + titleWidth(), rect().bottom() - rect().height() / 2, rect().left() +  2 * titleWidth());
+	painter.translate(0, rect().height() / 2 - m_distance);
+	painter.rotate(-90.0);
+	painter.drawText(trc1, Qt::AlignCenter, "<	-	|	-	>");
+	painter.rotate(90.0);
+	painter.translate(0, -rect().height() / 2 + m_distance);
+
+	painter.setPen(palette().color(QPalette::Active, QPalette::Dark));
+
+	painter.drawLine(rect().topLeft(),					rect().bottomLeft());
+	painter.drawLine(rect().topRight(),					rect().bottomRight());
+	painter.drawLine(rect().topLeft(),					rect().topRight());
+	painter.drawLine(rect().bottomLeft() - QPoint(0,1),	rect().bottomRight() - QPoint(0,1));
+	painter.drawLine(titleWidth(),						1, titleWidth(), rect().bottom() - 2);
+	painter.drawLine(rect().right() - scaleWidth(),		1, rect().right() - scaleWidth(),		rect().bottom() - 2);
+
+	painter.setPen(palette().color(QPalette::Active,	QPalette::Light) );
+	painter.drawLine(rect().bottomLeft(),				rect().bottomRight());
+	painter.drawLine(titleWidth() + 1,					1, titleWidth() + 1,					rect().bottom() - 2);
+	painter.drawLine(rect().right() - scaleWidth() - 1, 1, rect().right() - scaleWidth() - 1,	rect().bottom() - 2);
+
+	painter.setPen(Qt::NoPen);
+	
+	QStylePainter stylePainter(this);
+	stylePainter.drawPixmap(0, 0, m_pixmap);*/
+//}
+
+//void EpisodeTypeSelectWidget::wheelEvent(QWheelEvent *e)
+//{
+	/*if (e->delta() > 0)
+	{
+		m_scale->zoomIn();
+	}
+	else if (e->delta() < 0)
+	{
+		m_scale->zoomOut();
+	}
+
+	update();
+	emit scaleChanged(m_scale->current());*/
+//}
+
+//void EpisodeTypeSelectWidget::contextMenuEvent(QContextMenuEvent *e)
+//{
+	 //QMenu *menu = new QMenu;
+	 //QString t("Вернуть изолинию в ноль нажмите 0");
+	 //menu->addAction(t);//, m_scale, zeroChanged);
+	 ////connect(m_scale,	SIGNAL(zeroChanged(int)),			this, SLOT(setZero(int)));
+	 //menu->exec(e->globalPos());
+//}
+
+//void EpisodeTypeSelectWidget::mouseMoveEvent(QMouseEvent *e)
+//{
+	/*if (((e->buttons() & Qt::LeftButton)) && drag)
+	{
+		m_distance		-= e->globalPos().y() - m_prev.y();
+		m_prev			= e->globalPos();
+
+		update();
+		emit zeroChanged(m_distance);
+	}*/
+//}
+
+//void EpisodeTypeSelectWidget::mousePressEvent(QMouseEvent *e)
+//{
+	/*drag		= true;
+	m_prev		= e->globalPos();
+	*///m_distance	= 0;
+//}
+
+//void EpisodeTypeSelectWidget::mouseReleaseEvent(QMouseEvent *e)
+//{	
+//	drag = false;
+//	update();
+	//emit zeroChanged(m_distance);
+//}
+
+void EpisodeTypeSelectWidget::keyPressEvent(QKeyEvent *e)
+{
+	switch (e->key())
+	{
+	//case Qt::Key_0:
+	//	drag = false;
+	//	m_distance = 0;
+	//	update();
+	//	emit zeroChanged(m_distance);
+	//	//delEpisode();
+	//	break;
+	default:
+		QWidget::keyPressEvent(e);
+		break;
+	}
+}
+
+void EpisodeTypeSelectWidget::textStyle(int styleIndex)
+{
+	EnvironmentPtr pEnv;
+	pEnv->setEpisodeType(m_episodeType, styleIndex);
+
+	QTextCursor cursor;// = textEdit->textCursor();
+	
+	if (styleIndex != 0)
+	{
+		QTextListFormat::Style style = QTextListFormat::ListDisc;
+		
+		switch (styleIndex)
+		{
+			 default:
+			 case 1:
+				 style = QTextListFormat::ListDisc;
+				 break;
+			 case 2:
+				 style = QTextListFormat::ListDecimal;
+				 break;
+		}
+		
+		cursor.beginEditBlock();
+		
+		QTextBlockFormat blockFmt = cursor.blockFormat();
+		QTextListFormat listFmt;
+		
+		if (cursor.currentList())
+		{
+			listFmt = cursor.currentList()->format();
+		}
+		else
+		{
+			listFmt.setIndent(blockFmt.indent() + 1);
+			blockFmt.setIndent(0);
+			cursor.setBlockFormat(blockFmt);
+		}
+		
+		listFmt.setStyle(style);
+		cursor.createList(listFmt);
+		cursor.endEditBlock();
+	}
+	else
+	{
+		QTextBlockFormat bfmt;
+		bfmt.setObjectIndex(-1);
+		cursor.mergeBlockFormat(bfmt);
+	}
+
+	//textEdit->setFocus();
+}

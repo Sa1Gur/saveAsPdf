@@ -1,0 +1,13 @@
+#ifndef TEXT_UTILS_H
+#define TEXT_UTILS_H
+
+#include <QtGui/QTextDocument>
+#include <QtGui/QTextCursor>
+
+//
+//Utilities for work with text.
+//
+
+void find_replace(QTextDocument *document, const QString &what, const QString &with);
+
+#endif // TEXT_UTILS_H

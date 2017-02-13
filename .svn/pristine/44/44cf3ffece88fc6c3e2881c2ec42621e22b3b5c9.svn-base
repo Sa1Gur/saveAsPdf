@@ -1,0 +1,54 @@
+#ifndef CANNULA_H
+#define CANNULA_H
+
+#include "trend.h"
+#include <QtGui/QSplashScreen>
+#include "main/environment.h"
+
+class Cannula: public Trend
+{
+public:
+	Cannula(const QString &title, const QColor &color, QSplashScreen *splash);
+	~Cannula();
+
+	struct Wave {
+		quint32	mxPos;
+		quint32	mnPos;
+		qint32	amplitude;
+
+		Wave()
+			: mxPos(0), mnPos(0), amplitude(0)
+		{}
+		
+		Wave(quint32 mxpos, quint32 mnpos, qint32 value)
+			: mxPos(mxpos), mnPos(mnpos), amplitude(value)
+		{}
+	};
+
+	typedef QVector<Wave> Waves;
+
+	Waves &build(RawData &can, RawData &smoothed, Cannula::Waves &waves);
+	
+	void NewAnalysis(Cannula::Waves &waves, RawData::value_type &amplitude, bool &hypopnea, int &hypoStart, int &hypoEnd, int &start);
+
+	typedef QVector<int> MMData;
+	static void build(RawData &data, MMData &mmpos);
+
+	static const QString canFilename_;
+	static const QString secFilename_;
+
+private:
+	HypoParams params_;
+	Values dsec_;
+
+	QVector<QPair<int, int>> hypoArray;
+
+	enum { BufSize = 10240 };
+
+	static int max_[BufSize];
+	static int min_[BufSize];
+	static int maxpos_[BufSize];
+	static int minpos_[BufSize];
+};
+
+#endif // CANNULA_H

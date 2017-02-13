@@ -1,0 +1,91 @@
+#include "trending.h"
+
+#include <QtGui/QPainter>
+#include <QtGui/QPrinter>
+#include <QtGui/QPaintEngine>
+#include <QtGui/QPrintPreviewDialog>
+#include <QtGui/QPrintDialog>
+#include <QtGui/QDesktopWidget>
+
+#include "report.h"
+#include "misc/muldiv.h"
+#include "trends/trends.h"
+#include "main/environment.h"
+
+TrendingDlg::TrendingDlg(QWidget *parent)
+:	QDialog(parent),
+	m_printer(new QPrinter)
+{
+	setupUi(this);
+}
+
+TrendingDlg::~TrendingDlg()
+{
+	delete m_printer;
+}
+
+void TrendingDlg::preview()
+{
+	QPrintPreviewDialog dlg;
+	QRect rc(QApplication::desktop()->screenGeometry());
+	dlg.setGeometry(muldiv(rc.width(), 1, 10), muldiv(rc.height(), 1, 10), muldiv(rc.width(), 8, 10), muldiv(rc.height(), 8, 10));
+	connect(&dlg, SIGNAL(paintRequested(QPrinter *)), this, SLOT(draw(QPrinter *)));
+	dlg.exec();
+}
+
+void TrendingDlg::draw(QPrinter *printer)
+{
+	QPainter painter(printer);
+
+	int logX = painter.paintEngine()->paintDevice()->physicalDpiX() * 10;
+	int logY = painter.paintEngine()->paintDevice()->physicalDpiY() * 10;
+
+	QFont baseFont("Arial", muldiv(25, logY, 254));
+	QFont boldFont("Arial", muldiv(25, logY, 254), QFont::Bold);
+	QFont smalFont("Arial", muldiv(12, logY, 254));
+
+	painter.setWindow(0, 0, muldiv(2100, logX, 254), muldiv(2970, logY, 254));
+	painter.setFont(baseFont);
+
+	/* Вывод заголовка */ {
+		QRect rc(muldiv(100, logX, 254), muldiv(100, logY, 254), muldiv(1900, logX, 254), muldiv(50, logY, 254));
+		painter.drawRect(rc);
+		painter.drawText(rc, Qt::AlignCenter, tr("Astrocard Somno Studio - Тренды"));
+	}
+
+	ReportDlg::printPatientInfo(&painter);
+
+	EnvironmentPtr	pEnv;
+	TrendsPtr		trendsPtr;
+	int				yPos		= 500;
+	for (int i = POSE; i < MAX_TREND; ++i)
+	{
+		QRect rcHead(muldiv(100, logX, 254), muldiv(yPos + 50, logY, 254), muldiv(1900, logX, 254), muldiv(50, logY, 254));
+
+		painter.setFont(boldFont);
+		painter.drawText(rcHead, Qt::AlignLeft|Qt::AlignVCenter, trendsPtr->trends().at(i)->title());
+
+		QRect rcGrid(muldiv(150, logX, 254), muldiv(yPos + 150, logY, 254), muldiv(1850, logX, 254), muldiv(300, logY, 254));
+
+		painter.setFont(smalFont);
+
+		trendsPtr->trends()[i]->drawScale(&painter, QRect(muldiv(100, logX, 254), muldiv(yPos + 150, logY, 254), muldiv(50, logX, 254), muldiv(300, logY, 254)), rcGrid);
+
+		ReportDlg::drawTimeScale(&painter, QRect(muldiv(150, logX, 254), muldiv(yPos + 450, logY, 254), muldiv(1850, logX, 254), muldiv(50, logY, 254)), rcGrid);
+
+		painter.drawRect(rcGrid);
+
+		trendsPtr->trends()[i]->draw(&painter, rcGrid, 0, pEnv->secsTotal());
+
+		yPos += 500;
+	}
+}
+
+void TrendingDlg::print()
+{
+	QPrintDialog printDlg(m_printer, this);
+	if (printDlg.exec())
+	{
+		draw(m_printer);
+	}
+}

@@ -1,0 +1,61 @@
+#ifndef SCALEWND_H
+#define SCALEWND_H
+
+#include <QtGui/QWidget>
+#include "main/environment.h"
+#include "misc/scale.h"
+
+class ScaleWnd: public QWidget
+{
+	Q_OBJECT
+	Q_PROPERTY(int titleWidth READ titleWidth WRITE setTitleWidth)
+	Q_PROPERTY(int scaleWidth READ scaleWidth WRITE setScaleWidth)
+//	Q_PROPERTY(double scale READ scale)
+
+public:
+	enum Type {
+		Standard,
+		Zooming,
+		Ranged,
+		RangedZooming
+	};
+
+	//ScaleWnd(int index, const Scale::UnitList &units, int startIndex = 0, Type type = Standard, QWidget *parent = 0);
+	ScaleWnd(int index, const Scale::UnitList &units, int startIndex = 0, Type type = Standard, int m_distance_ = 0, QWidget *parent = 0);
+	~ScaleWnd();
+
+	QSize	minimumSizeHint() const;
+
+	int		titleWidth() const;
+	void	setTitleWidth(int width);
+	int		scaleWidth() const;
+	void	setScaleWidth(int width);
+
+	void	zoomIn();
+	void	zoomOut();
+
+signals:
+	void	scaleChanged(const Scale::Unit &scale);
+	void	zeroChanged(int zero);
+
+protected:
+	void	paintEvent(QPaintEvent *e);
+	void	wheelEvent(QWheelEvent *e);
+	void	contextMenuEvent(QContextMenuEvent *e);
+	void	mouseMoveEvent(QMouseEvent *e);
+	void	mousePressEvent(QMouseEvent *e);
+	void	mouseReleaseEvent(QMouseEvent *e);
+	void	resizeEvent(QResizeEvent *e);
+	void	keyPressEvent(QKeyEvent *e);
+
+private:
+	QPixmap m_pixmap;
+	Scale*  m_scale;
+	int		m_titleWidth,
+			m_scaleWidth,
+			m_distance;
+	bool	drag;
+	QPoint	m_prev;
+};
+
+#endif // SCALEWND_H

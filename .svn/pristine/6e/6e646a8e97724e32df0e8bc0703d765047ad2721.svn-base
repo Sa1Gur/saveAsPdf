@@ -1,0 +1,41 @@
+#ifndef REDWND_H
+#define REDWND_H
+
+#include "scalewnd.h"
+#include "main/curves.h"
+
+#include <QtGui/QHBoxLayout>
+
+class RedWnd: public QWidget
+{
+	Q_OBJECT
+
+public:
+	RedWnd(QWidget *parent = 0);
+	~RedWnd();
+
+public Q_SLOTS:
+	void placeEpisodes();
+	void clearEpisodes();
+	void setScale(const Scale::Unit &scale);
+	void setRange(const Scale::Unit &range);
+	void setZero(int zero);
+
+protected:
+	void resizeEvent(QResizeEvent *event);
+	bool eventFilter(QObject *target, QEvent *e);
+	void onPaintView();	
+
+private:
+	QHBoxLayout* m_layout;
+	ScaleWnd*    m_scale;
+	QWidget*     m_view;
+	DataCurve*   m_curve;
+	QPixmap      m_pixmap;
+	QWidgetList  m_ews;
+	int          m_upper,
+				m_lower,
+				m_zero;
+};
+
+#endif

@@ -1,0 +1,326 @@
+#include "episodewnd.h"
+#include <QtGui/QStylePainter>
+#include <QtCore/QEvent>
+#include <QtGui/QResizeEvent>
+#include <QtGui/QApplication>
+#include <QtGui/QDesktopWidget>
+#include <QtGui/QMessageBox>
+#include <QtGui/qmenu.h>
+#include "main/environment.h"
+#include "main/mainwnd.h"
+#include "misc/muldiv.h"
+
+EpisodeWnd::EpisodeWnd(const Episode &episode, QWidget *parent, QWidget *main)
+:	QWidget(parent),
+	m_episode(episode),
+	m_rflag(false),
+	m_lflag(false),
+	m_middle(false)
+{
+	m_delButton = new QToolButton(this);
+	m_delButton->setIcon(QIcon(":/MainWnd/delete.png"));
+	m_delButton->adjustSize();
+	connect(m_delButton,	SIGNAL(clicked()),		this,	SLOT(delEpisode()));
+	connect(this,			SIGNAL(doUpdateView()),	main,	SIGNAL(doUpdateView()));
+	connect(this,			SIGNAL(delEp(Episode)),	main,	SLOT(deleteEpisode(Episode)));//SIGNAL(delEp(Episode)));
+
+	setMouseTracking(true);
+	setContextMenuPolicy(Qt::DefaultContextMenu);
+}
+
+EpisodeWnd::~EpisodeWnd()
+{
+	delete m_delButton;
+}
+
+int EpisodeWnd::bsec() const
+{
+	return m_episode.bsec();
+}
+
+int EpisodeWnd::length() const
+{
+	return m_episode.length();
+}
+
+void EpisodeWnd::delEpisode()
+{
+#ifdef _DEBUG
+	int r = QMessageBox::warning(this, m_episode.title(), tr("Удалить эпизод?"), QMessageBox::Yes | QMessageBox::No);
+	if (r == QMessageBox::Yes)
+	{
+#endif
+		if (m_episode.remove())
+		{
+			close();
+
+			emit delEp(m_episode);
+		}
+#ifdef _DEBUG
+	}
+#endif
+}
+
+void EpisodeWnd::paintEvent(QPaintEvent *e)
+{
+	QColor backgroundColor = m_episode.color();
+	backgroundColor.setAlpha(100);
+	QPainter painter(this);
+	
+	painter.fillRect(rect(),	backgroundColor);
+	painter.setPen(QColor(255, 255, 255));
+
+	EnvironmentPtr pEnv;
+	if (pEnv->testOption(MarkMode))
+	{
+		painter.fillRect(m_sbRight, backgroundColor.darker());
+		painter.fillRect(m_sbLeft,	backgroundColor.darker());
+
+		m_delButton->show();
+	}
+	else
+	{
+		m_delButton->hide();
+	}
+
+	if (hasFocus())
+	{
+		QFont font = painter.font();
+		font.setBold(true);
+		font.setPointSize(font.pointSize() + 1);
+		painter.setFont(font);
+	}
+	
+	QString text(m_episode.text());
+	if (m_rflag || m_lflag)
+	{
+		(m_distance > 0) ? text += "\n+" : text += "\n";
+		text += tr("%1 сек").arg(qRound(m_distance / 1000.0));
+	}
+	
+	painter.drawText(rect(), Qt::AlignTop | Qt::AlignHCenter, text);
+}
+
+void EpisodeWnd::contextMenuEvent(QContextMenuEvent *e)
+{
+	EnvironmentPtr pEnv;
+	if (pEnv->testOption(MarkMode))
+	{
+		QMenu *menu = new QMenu;
+		
+		EnvironmentPtr pEnv;
+		for (int i = 0; i < Episode::All; i++)
+		{
+			QAction* checkableAction = new QAction(pEnv->episodeTitle(i), this);
+			checkableAction->setCheckable(true);
+			checkableAction->setData(i);
+			if (m_episode.type() == i)
+			{
+				checkableAction->setChecked(true);
+			}
+			menu->addAction(checkableAction);
+		}
+		connect(menu, SIGNAL(triggered(QAction*)), this, SLOT(changeEpisodeType(QAction*)));
+		menu->exec(e->globalPos());
+	}
+}
+
+void EpisodeWnd::changeEpisodeType(QAction* action)
+{
+	action->setChecked(true);
+	m_episode.setType(action->data().toInt());
+	
+	emit doUpdateView();
+}
+
+void EpisodeWnd::mouseMoveEvent(QMouseEvent *e)
+{
+	EnvironmentPtr pEnv;
+	if (pEnv->testOption(MarkMode))
+	{
+		if (m_sbRight.contains(e->pos()) || m_sbLeft.contains(e->pos()))
+		{
+			setCursor(Qt::SizeHorCursor);
+		}
+		else
+		{
+			setCursor(Qt::ArrowCursor);
+		}
+
+		if (e->buttons() & Qt::LeftButton)
+		{
+			int distance = e->globalPos().x() - m_prev.x();
+			m_prev = e->globalPos();
+
+			if (m_rflag || m_lflag)
+			{
+				// milliseconds which will be added
+				int ms = ((int)pEnv->msecsPerScreen() * distance) / parentWidget()->geometry().width();
+		
+				// a new length of episode
+				int newLength = m_rflag ? (m_episode.length() * 1000) + m_distance + ms : (m_episode.length() * 1000) - m_distance - ms;
+				
+				if (newLength >= m_episode.minLength())
+				{
+					m_distance += ms;
+
+					if (m_rflag)
+					{
+						resize(rect().width() + distance, rect().height());
+					}
+					else if (m_lflag)
+					{
+						QRect	old		= geometry();
+						QPoint	topLeft	= old.topLeft() + QPoint(distance, 0);
+						old.setTopLeft(topLeft);
+						setGeometry(old);
+					}
+				}
+			}
+			else
+			{
+				int ms = ((int)pEnv->msecsPerScreen() * distance) / parentWidget()->geometry().width();
+				m_distance += ms;
+
+				QRect	old			= geometry();
+				QPoint	topLeft		= old.topLeft() + QPoint(distance, 0),
+						topRight	= old.topRight() + QPoint(distance, 0);
+				old.setTopLeft(topLeft);
+				old.setTopRight(topRight);
+				setGeometry(old);				
+			}
+		}
+	}
+}
+
+void EpisodeWnd::mousePressEvent(QMouseEvent *e)
+{
+	EnvironmentPtr pEnv;
+	if (pEnv->testOption(MarkMode))
+	{
+		setFocus();
+		if (e->buttons() & Qt::LeftButton)
+		{
+			m_prev = e->globalPos();
+			if (m_sbRight.contains(e->pos()))
+			{
+				m_rflag = true;
+				m_distance = 0;
+			}
+			else if (m_sbLeft.contains(e->pos()))
+			{
+				m_lflag = true;
+				m_distance = 0;
+			}
+			else
+			{
+				m_middle = true;
+				m_distance = 0;
+			}
+		}
+	}
+}
+
+void EpisodeWnd::mouseReleaseEvent(QMouseEvent *e)
+{
+	EnvironmentPtr pEnv;
+	// pixels which will be subtracted
+	int px = (parentWidget()->geometry().width() * m_distance) / (int)pEnv->msecsPerScreen();
+
+	if (m_rflag)
+	{
+		m_episode.add_to_end(m_distance);
+		if (!m_episode.update())
+		{
+			m_episode.add_to_end(-m_distance);
+			resize(rect().width() - px, rect().height());
+		}
+	}
+
+	if (m_lflag)
+	{
+		m_episode.move_start(m_distance);
+		if (!m_episode.update())
+		{
+			m_episode.move_start(-m_distance);
+			QRect geom = geometry();
+			QPoint topLeft = geom.topLeft() - QPoint(px, 0);
+			geom.setTopLeft(topLeft);
+			setGeometry(geom);
+		}
+	}
+
+	if (m_middle)
+	{
+		m_episode.move_episode(m_distance);
+		if (!m_episode.update())
+		{
+			m_episode.move_episode(-m_distance);
+			QRect	geom		= geometry();
+			QPoint	topLeft		= geom.topLeft() - QPoint(px, 0),
+					topRight	= geom.topRight() - QPoint(px, 0);
+			geom.setTopLeft(topLeft);
+			geom.setTopRight(topRight);
+			setGeometry(geom);
+		}		
+	}
+
+	if ((m_rflag || m_lflag) || m_middle)
+	{
+		m_rflag		= false;
+		m_lflag		= false;
+		m_middle	= false;
+		update();
+
+		emit doUpdateView();
+	}
+}
+
+void EpisodeWnd::resizeEvent(QResizeEvent *e)
+{
+	int newHeight	= e->size().height();
+	int newWidth	= e->size().width();
+	m_sbRight.setCoords(newWidth - 10,	newHeight/2 - 15, newWidth, newHeight/2 + 15);
+	m_sbLeft.setCoords(0,				newHeight/2 - 15, 10,		newHeight/2 + 15);
+	m_delButton->move(newWidth - m_delButton->width(), 0);
+}
+
+void EpisodeWnd::keyPressEvent(QKeyEvent *e)
+{
+	int newEpisodeType = -1;
+	switch (e->key())
+	{
+	case Qt::Key_Delete:
+		delEpisode();
+		break;
+	case Qt::Key_A:
+		newEpisodeType = Episode::Artefacts;
+		break;
+	case Qt::Key_H:
+		newEpisodeType = Episode::Hypopnea;
+		break;
+	case Qt::Key_O:
+		newEpisodeType = Episode::ObstrApnea;
+		break;
+	case Qt::Key_D:
+		newEpisodeType = Episode::Desaturation;
+		break;
+	case Qt::Key_C:
+		newEpisodeType = Episode::CentrApnea;
+		break;
+	default:
+		QWidget::keyPressEvent(e);
+		break;
+	}
+
+	if (newEpisodeType != -1)//changing Episode type by key
+	{
+		m_episode.setType(newEpisodeType);
+		emit doUpdateView();
+	}
+}
+
+int	EpisodeWnd::getEpisodeId() const
+{
+	return m_episode.id();
+}

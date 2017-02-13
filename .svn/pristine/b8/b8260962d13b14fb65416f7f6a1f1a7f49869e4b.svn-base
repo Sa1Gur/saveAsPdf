@@ -1,0 +1,62 @@
+#ifndef TRENDWND_H
+#define TRENDWND_H
+
+#include <QtGui/QWidget>
+#include <QtCore/QDateTime>
+
+#include "bodypositioncolorwnd.h"
+
+class TrendWnd: public QWidget
+{
+	Q_OBJECT
+
+public:
+	TrendWnd(QWidget *parent = 0);
+	~TrendWnd();
+
+	QSize minimumSizeHint() const;
+	QSize sizeHint() const;
+	void compress(QAction *action);
+	void expand(QAction *action);
+
+signals:
+	void positionChanged();
+
+protected:
+	void resizeEvent(QResizeEvent *e);
+	void paintEvent(QPaintEvent *e);
+	void mousePressEvent(QMouseEvent *e);
+	void mouseMoveEvent(QMouseEvent *e);
+	void contextMenuEvent(QContextMenuEvent *e);
+
+	enum {
+		HorzGridCount = 24,
+		VertGridCount = 10,
+		LeftPadding = 90,
+		Spacing = 5,
+		SecsInDay = (24*60*60),
+		SecsInHour = (60*60),
+		SecsInMinute = 60
+	};
+
+	void drawBorder(QPainter &painter);
+	void drawTrends(QPainter &painter);
+	void drawGrid(QPainter &painter);
+	void drawCursor(QPainter &painter);
+	void drawEvents(QPainter &painter);	
+
+private:
+	QPixmap pixmap_;
+	QVector<int> timeScales_;
+	QVector<int>::const_iterator timeScale_;
+	QDateTime gridStart_;
+	QRect rectTop_;
+	QRect rectMid_;
+	QRect rectBottom_;
+	QRect m_rectLeft;
+
+	QWidget *colorsMainWidget;
+	CurrentPositionColorWidget *colorsCurrentWidget;
+};
+
+#endif // TRENDWND_H

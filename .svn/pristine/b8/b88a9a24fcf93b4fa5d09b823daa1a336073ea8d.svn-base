@@ -1,0 +1,33 @@
+#ifndef TRENDS_H
+#define TRENDS_H
+
+#include "misc/singleton.h"
+#include "trend.h"
+#include <QtCore/QString>
+#include <QtGui/QSplashScreen>
+
+enum TrendIndex {
+	POSE, PULSE, SPO2, CANN, MAX_TREND
+};
+
+class Trends : public Singleton<Trends> {
+public:
+	static QString fileEvents;
+
+protected:
+	Trends();
+	~Trends();
+	friend class Singleton<Trends>;
+
+public:
+	void construct(QSplashScreen *splash);
+	const QVector<Trend *> &trends() const;
+	void recalculate(int trend_id, QSplashScreen *splash);
+
+private:
+	QVector<Trend *> trends_;
+};
+
+typedef SingletonPtr<Trends> TrendsPtr;
+
+#endif // TRENDS_H

@@ -1,0 +1,24 @@
+#ifndef CUSTOMPRINTPREVIEWDIALOG_H
+#define CUSTOMPRINTPREVIEWDIALOG_H
+
+#include <QtGui/QPrintPreviewDialog>
+
+class CustomPrintPreviewDialog : public QPrintPreviewDialog
+{
+	Q_OBJECT
+
+public:
+	explicit CustomPrintPreviewDialog(QPrinter *printer, QWidget *parent = 0);
+	~CustomPrintPreviewDialog();
+
+private Q_SLOTS:
+	void saveas();
+
+//signals:
+//	void paintRequested(QPrinter * printer);// QPrinter *);
+
+//private:
+//	QPrinter *m_printer;
+};
+
+#endif // CUSTOMPRINTPREVIEWDIALOG_H

@@ -1,0 +1,92 @@
+#include "channels.h"
+#include "main/environment.h"
+
+ChannelsDlg::ChannelsDlg(QWidget *parent)
+: QDialog(parent)
+{
+	setupUi(this);
+
+	EnvironmentPtr pEnv;
+	mask = pEnv->dataMask();
+
+	checkBox_Ss->setChecked(mask.testBit(Rt));
+	checkBox_Eeg4->setChecked(mask.testBit(Eeg4));
+	checkBox_Eeg3->setChecked(mask.testBit(Eeg3));
+	checkBox_Eeg2->setChecked(mask.testBit(Eeg2));
+	checkBox_Eeg1->setChecked(mask.testBit(Eeg1));
+	checkBox_Eog2->setChecked(mask.testBit(Okg2));
+	checkBox_Eog1->setChecked(mask.testBit(Okg1));
+	checkBox_Emg2->setChecked(mask.testBit(Emg2));
+	checkBox_Emg1->setChecked(mask.testBit(Emg1));
+	checkBox_Rsp2->setChecked(mask.testBit(Rsp2));
+	checkBox_Rsp1->setChecked(mask.testBit(Rsp1));
+	checkBox_Tfs->setChecked(mask.testBit(Diff));
+	checkBox_Z->setChecked(mask.testBit(Z));
+	checkBox_Y->setChecked(mask.testBit(Y));
+	checkBox_X->setChecked(mask.testBit(X));
+	checkBox_Ms->setChecked(mask.testBit(Mic));
+	checkBox_Cann->setChecked(mask.testBit(Cann));
+	checkBox_Nois->setChecked(mask.testBit(Nois));
+	checkBox_Red->setChecked(mask.testBit(Red));
+	checkBox_Ir->setChecked(mask.testBit(Ir));
+	checkBox_I->setChecked(mask.testBit(I));
+	checkBox_II->setChecked(mask.testBit(II));
+	checkBox_III->setChecked(mask.testBit(III));
+	checkBox_avR->setChecked(mask.testBit(avR));
+	checkBox_avL->setChecked(mask.testBit(avL));
+	checkBox_avF->setChecked(mask.testBit(avF));
+	checkBox_v1->setChecked(mask.testBit(v1));
+	checkBox_v2->setChecked(mask.testBit(v2));
+	checkBox_v3->setChecked(mask.testBit(v3));
+	checkBox_v4->setChecked(mask.testBit(v4));
+	checkBox_v5->setChecked(mask.testBit(v5));
+	checkBox_v6->setChecked(mask.testBit(v6));
+
+	if (!pEnv->testOption(FullMode))
+	{
+		groupBox_Eeg->setEnabled(false);
+		groupBox_Ecg->setEnabled(false);
+		checkBox_Nois->setEnabled(false);
+	}
+}
+
+void ChannelsDlg::accept()
+{
+	mask.setBit(Rt, checkBox_Ss->isChecked());
+	mask.setBit(Eeg4, checkBox_Eeg4->isChecked());
+	mask.setBit(Eeg3, checkBox_Eeg3->isChecked());
+	mask.setBit(Eeg2, checkBox_Eeg2->isChecked());
+	mask.setBit(Eeg1, checkBox_Eeg1->isChecked());
+	mask.setBit(Okg2, checkBox_Eog2->isChecked());
+	mask.setBit(Okg1, checkBox_Eog1->isChecked());
+	mask.setBit(Emg2, checkBox_Emg2->isChecked());
+	mask.setBit(Emg1, checkBox_Emg1->isChecked());
+	mask.setBit(Rsp2, checkBox_Rsp2->isChecked());
+	mask.setBit(Rsp1, checkBox_Rsp1->isChecked());
+	mask.setBit(Diff, checkBox_Tfs->isChecked());
+	mask.setBit(Z, checkBox_Z->isChecked());
+	mask.setBit(Y, checkBox_Y->isChecked());
+	mask.setBit(X, checkBox_X->isChecked());
+	mask.setBit(Mic, checkBox_Ms->isChecked());
+	mask.setBit(Cann, checkBox_Cann->isChecked());
+	mask.setBit(Nois, checkBox_Nois->isChecked());
+	mask.setBit(Red, checkBox_Red->isChecked());
+	mask.setBit(Ir, checkBox_Ir->isChecked());
+	mask.setBit(I, checkBox_I->isChecked());
+	mask.setBit(II, checkBox_II->isChecked());
+	mask.setBit(III, checkBox_III->isChecked());
+	mask.setBit(avR, checkBox_avR->isChecked());
+	mask.setBit(avL, checkBox_avL->isChecked());
+	mask.setBit(avF, checkBox_avF->isChecked());
+	mask.setBit(v1, checkBox_v1->isChecked());
+	mask.setBit(v2, checkBox_v2->isChecked());
+	mask.setBit(v3, checkBox_v3->isChecked());
+	mask.setBit(v4, checkBox_v4->isChecked());
+	mask.setBit(v5, checkBox_v5->isChecked());
+	mask.setBit(v6, checkBox_v6->isChecked());
+
+	EnvironmentPtr pEnv;
+	pEnv->setDataMask(mask);
+
+	QDialog::accept();
+}

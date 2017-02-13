@@ -1,0 +1,65 @@
+#ifndef REPORT_H
+#define REPORT_H
+
+#include "ui_report.h"
+#include "eventstatisticclasses.h"
+
+QT_FORWARD_DECLARE_CLASS(QLabel)
+QT_FORWARD_DECLARE_CLASS(Episode);
+
+static int inch = 254;
+
+class ReportDlg: public QDialog, public Ui::ReportForm
+{
+	Q_OBJECT
+
+public:
+	ReportDlg(QWidget *parent = 0);
+	~ReportDlg();
+
+	static void printPatientInfo(QPainter *painter);
+	static void drawTimeScale(
+		QPainter *painter,
+		const QRect &rc,
+		const QRect &ext = QRect());
+
+signals:
+	void positionChanged();
+
+public Q_SLOTS:
+	void mode();
+	void print();
+	void preview();
+	void paint(QPrinter *printer) const;
+	void updateView();
+	bool eventFilter(QObject *target, QEvent *e);
+	void editData(int, int);
+	void selectData(int, int);
+
+protected:
+	void initApnoeHistogram();
+	void apnoeHistogramDraw(QPainter *painter, QRect *rc1, QRect *rc2, QRect *rc3, QRect *rc4);
+	void initPositionGraph();
+	void positionGraphDraw(QPainter *painter, QRect *rc1, QRect *rc2, QRect *rc3, QRect *rc4);
+
+private:
+	QRect					savedRect;
+	bool					graphicMode;
+	QPrinter*				m_printer;
+	Dreams					m_dreams;
+	Apneas					m_apneas;
+	Desaturations			m_desat;
+	Saturation				m_satur;
+	Pulse					m_pulse;
+	QLabel*					m_label_1;
+	QImage*					m_apnoeHistogramm;
+	QPixmap					m_apnoeHistogrammPixmap;
+	QLabel*					m_label_2;
+	QImage*					m_positionGraph;
+	QPixmap					m_positionGraphPixmap;
+	QFont*					m_smallFont;
+	QFont*					m_smallFontPixmap;
+	QList<QTableWidget*>	tableWidgetList;
+};
+
+#endif // REPORT_H

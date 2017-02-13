@@ -1,0 +1,138 @@
+#include "conclusion.h"
+#include "main/environment.h"
+
+#include <QtGui/QTextList>
+#include <QtGui/QColorDialog>
+#include <QtGui/QTextDocumentWriter>
+#include <QtCore/QFile>
+#include <QtCore/QTextCodec>
+#include <QtGui/QPrinter>
+#include <QtGui/QPrintDialog>
+#include <QtGui/QPrintPreviewDialog>
+#include <QtGui/QTextDocument>
+#include <QtCore/QDir>
+#include <QtGui/QMessageBox>
+#include <QtGui/QCloseEvent>
+#include <QtGui/QTextEdit>
+
+ConclusionDlg::ConclusionDlg(QWidget *parent)
+: QDialog(parent)
+{
+	setupUi(this);
+	setWindowTitle(tr("Заключение"));
+
+	QStringList filters;
+	filters.push_back("*.html");
+
+	QStringList files = QDir(".\\templates").entryList(filters);
+	if (!files.isEmpty())
+	{
+		Q_FOREACH(const QString &name, files)
+		{
+			comboBox->addItem(name);
+		}
+		comboBox->setCurrentIndex(0);
+	}
+	else
+	{
+		comboBox->addItem(tr("Шаблоны не найдены..."));
+		comboBox->setEnabled(false);
+	}
+
+	connect(comboBox, SIGNAL(activated(QString)), this, SLOT(load(QString)));
+
+	if (!load())
+	{
+		load(comboBox->currentText());
+	}
+
+	saveButton->setEnabled(false);
+	connect(richEdit->document(), SIGNAL(modificationChanged(bool)), saveButton, SLOT(setEnabled(bool)));
+}
+
+/*!
+	Загружает ранее сохраненный файл 'Путь_к_записи\conclusion.html'
+*/
+bool ConclusionDlg::load()
+{
+	EnvironmentPtr pEnv;
+	QString filename = pEnv->createPath("conclusion.html");
+	QFile file(filename);
+	if (file.exists())
+	{
+		richEdit->load(filename);
+		return true;
+	}
+
+	return false;
+}
+
+void ConclusionDlg::closeEvent(QCloseEvent *e)
+{
+	save();
+	e->accept();
+}
+
+/*!
+	Загружает выбранный шаблон из папки '\templates'
+*/
+void ConclusionDlg::load(const QString &filename)
+{
+	save();
+
+	QFile file(".\\templates\\" + filename);
+	if (file.open(QIODevice::ReadOnly))
+	{
+		QByteArray data = file.readAll();
+		QTextCodec *codec = Qt::codecForHtml(data);
+		QString str = codec->toUnicode(data);
+
+		EnvironmentPtr pEnv;
+		str.replace("%{name}", pEnv->patientName());
+		str.replace("%{date}", pEnv->inspectionDate().toString("dd.MM.yyyy"));
+		
+		if (Qt::mightBeRichText(str))
+		{
+			richEdit->editor()->setHtml(str);
+		}
+		else
+		{
+			str = QString::fromLocal8Bit(data);
+			richEdit->editor()->setPlainText(str);
+		}
+	}
+
+	richEdit->document()->setModified(true);
+}
+
+/*!
+	Сохраняет содержимое в файл 'Путь_к_записи\conclusion.html'
+*/
+void ConclusionDlg::save()
+{
+	if (richEdit->document()->isModified())
+	{
+		int r = QMessageBox::question(this, tr("Заключение"), tr("Сохранить изменения?"), QMessageBox::Yes|QMessageBox::No, QMessageBox::No);
+		if (r == QMessageBox::Yes)
+		{
+			EnvironmentPtr		pEnv;
+			QString				fileName		= pEnv->createPath("conclusion.html");
+			QTextDocumentWriter writer(fileName);
+			bool				success			= writer.write(richEdit->document());
+			if (success)
+			{
+				richEdit->document()->setModified(false);
+			}
+		}
+	}
+}
+
+void ConclusionDlg::print()
+{
+	QPrinter		printer(QPrinter::HighResolution);
+	QPrintDialog	printDlg(&printer, this);
+	if (printDlg.exec())
+	{
+		richEdit->document()->print(&printer);
+	}
+}

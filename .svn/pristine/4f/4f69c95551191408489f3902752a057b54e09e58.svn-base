@@ -1,0 +1,30 @@
+#ifndef SMOOTH_H
+#define SMOOTH_H
+
+#include <numeric>
+
+template <typename T>
+void smooth(QVector<T> &data, size_t frequency)
+{
+	size_t avDep = std::min<size_t>(data.size(), frequency);
+	int avLen = avDep;
+	
+	T sumVal = std::accumulate(data.begin(), data.begin() + avDep, 0);
+	
+	for(size_t i = 0; i < data.size(); ++i)
+	{
+		if (i < data.size() - avDep) {
+			sumVal += data[i + avDep];
+			avLen++;
+		}
+		
+		if (i >= avDep) {
+			sumVal -= data[i - avDep];
+			avLen--;
+		}
+		
+		data[i] = sumVal/avLen;
+	}
+}
+
+#endif // SMOOTH_H

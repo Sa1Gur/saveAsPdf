@@ -1,0 +1,50 @@
+#include "richeditplugin.h"
+#include "richedit.h"
+#include <QtPlugin>
+
+RichEditPlugin::RichEditPlugin(QObject *parent)
+: QObject(parent)
+{
+}
+
+QString RichEditPlugin::name() const
+{
+	return "RichEdit";
+}
+
+QString RichEditPlugin::includeFile() const
+{
+	return "richedit/richedit.h";
+}
+
+QString RichEditPlugin::group() const
+{
+	return tr("Input Widgets");
+}
+
+QIcon RichEditPlugin::icon() const
+{
+	return QIcon(":/RichEdit/images/richedit.png");
+}
+
+QString RichEditPlugin::toolTip() const
+{
+	return tr("An rich text editor widget");
+}
+
+QString RichEditPlugin::whatsThis() const
+{
+	return tr("This widget is used to edit text.");
+}
+
+bool RichEditPlugin::isContainer() const
+{
+	return false;
+}
+
+QWidget *RichEditPlugin::createWidget(QWidget *parent)
+{
+	return new RichEdit(parent);
+}
+
+Q_EXPORT_PLUGIN2(richeditplugin, RichEditPlugin)

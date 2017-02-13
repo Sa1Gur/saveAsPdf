@@ -1,0 +1,59 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Generated Files">
+      <UniqueIdentifier>{71ED8ED8-ACB9-4CE9-BBE1-E00B30144E11}</UniqueIdentifier>
+      <Extensions>moc;h;cpp</Extensions>
+      <SourceControlFiles>False</SourceControlFiles>
+    </Filter>
+    <Filter Include="Generated Files\Release">
+      <UniqueIdentifier>{58fa3779-5221-4f4a-a9be-38d4dd6f4c03}</UniqueIdentifier>
+      <Extensions>cpp;moc</Extensions>
+      <SourceControlFiles>False</SourceControlFiles>
+    </Filter>
+    <Filter Include="Generated Files\Debug">
+      <UniqueIdentifier>{e8fb3f57-93ed-4ec4-8ed1-8fe1d39ba13e}</UniqueIdentifier>
+      <Extensions>cpp;moc</Extensions>
+      <SourceControlFiles>False</SourceControlFiles>
+    </Filter>
+    <Filter Include="forms">
+      <UniqueIdentifier>{ed785916-9ecc-4490-a766-8ce2ece9a102}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="forms\Header Files">
+      <UniqueIdentifier>{9c59ced1-c66e-47ca-bd8d-97ed2927ddbc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="main">
+      <UniqueIdentifier>{6472f308-8687-4c73-aa88-8963fdae9968}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="main\Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h</Extensions>
+    </Filter>
+    <Filter Include="main\Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;cxx;c;def</Extensions>
+    </Filter>
+    <Filter Include="forms\Source Files">
+      <UniqueIdentifier>{7659c266-58c9-40ca-82e3-215e54e7083d}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main\main.cpp">
+      <Filter>main\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="forms\customprintpreviewdialog.cpp">
+      <Filter>forms\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GeneratedFiles\Debug\moc_customprintpreviewdialog.cpp">
+      <Filter>Generated Files\Debug</Filter>
+    </ClCompile>
+    <ClCompile Include="GeneratedFiles\Release\moc_customprintpreviewdialog.cpp">
+      <Filter>Generated Files\Release</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="forms\customprintpreviewdialog.h">
+      <Filter>forms\Header Files</Filter>
+    </CustomBuild>
+  </ItemGroup>
+</Project>

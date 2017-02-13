@@ -1,0 +1,115 @@
+#include "pulsewnd.h"
+#include "trends/pulse.h"
+#include "trends/trends.h"
+
+#include <QtCore/QEvent>
+#include <QtGui/QStylePainter>
+
+PulseWnd::PulseWnd(QWidget *parent)
+: QWidget(parent)
+{
+	m_layout = new QHBoxLayout();
+	
+	Scale::UnitList ranges;
+	ranges.push_back(Scale::UnitList::value_type("80", "0"));
+	ranges.push_back(Scale::UnitList::value_type("160", "80"));
+	ranges.push_back(Scale::UnitList::value_type("240", "160"));
+	const int startIndex = 0;
+	m_range = new ScaleWnd(MaxData, ranges, startIndex, ScaleWnd::Ranged);
+	m_range->setWindowTitle(tr("Пульс, 1/мин"));
+	
+	m_view = new QWidget();
+	
+	m_layout->addWidget(m_range);
+	m_layout->addWidget(m_view);
+	m_layout->setContentsMargins(0, 0, 0, 0);
+	m_layout->setSpacing(0);
+	setLayout(m_layout);
+
+	m_view->installEventFilter(this);
+	setRange(*(ranges.begin() + startIndex));
+	connect(m_range, SIGNAL(scaleChanged(Scale::Unit)), this, SLOT(setRange(Scale::Unit)));
+	connect(m_range, SIGNAL(zeroChanged(int)),			this, SLOT(setZero(int)));
+
+	m_zero = 0;
+}
+
+void PulseWnd::setRange(const Scale::Unit &range)
+{
+	m_upper = range.first.toInt();
+	m_lower = range.second.toInt();
+	m_view->update();
+}
+
+void PulseWnd::setZero(int zero)
+{
+	m_zero = zero;
+	m_view->update();
+}
+
+bool PulseWnd::eventFilter(QObject *target, QEvent *e)
+{
+	bool needUpdate = false;
+	if (target == m_view && e->type() == QEvent::Paint)
+	{
+		needUpdate = true;
+	}
+
+	bool res = QWidget::eventFilter(target, e);
+
+	if (needUpdate)
+	{
+		onPaintView();
+	}
+
+	return res;
+}
+
+void PulseWnd::onPaintView()
+{
+	m_pixmap = QPixmap(m_view->size());
+	m_pixmap.fill(m_view, 0, 0);
+	QPainter painter(&m_pixmap);
+	painter.initFrom(m_view);
+
+	EnvironmentPtr pEnv;
+	ColorScheme cs = pEnv->colorScheme(Ir);
+	painter.fillRect(m_view->rect(), cs.second);
+
+	TrendsPtr ptr;
+	Trend *trend = ptr->trends().at(PULSE);
+	if (Pulse *pulse = dynamic_cast<Pulse*>(trend))
+	{
+		QPolygonF curve(pEnv->secsPerScreen() + 1);
+		painter.setBrush(cs.first);
+		painter.setPen(cs.first);
+
+		for (int i = 0, j = pEnv->currentSecond(); i < curve.size(); ++i, ++j)
+		{
+			int		value	= pulse->values().value(j, 0),
+					_value	= pulse->values().value(j, 0) + m_zero;
+			double x = m_view->rect().left() + (i * m_view->rect().width()) / pEnv->secsPerScreen();
+			double y = (_value > m_upper) ? (m_view->rect().top() + 1) : (_value < m_lower) ? (m_view->rect().bottom() - 1) : ((value - m_upper) * m_view->rect().height()) / (m_lower - m_upper);
+			
+			curve[i] = QPointF(x, y);
+
+			if (pEnv->msecsPerScreen() <= TWO_MIN)
+			{
+				int xOffset = painter.fontMetrics().averageCharWidth();
+				int yOffset = painter.fontMetrics().height() + 3;
+				painter.drawEllipse(curve[i], 2, 2);
+				painter.rotate(-90.0);
+				QPointF point((_value > m_upper) ? (-y-yOffset) : (-y+3), x + xOffset);
+				painter.drawText(point, QString("%1").arg(value));
+				painter.rotate(90.0);
+			}
+		}
+		
+		painter.drawPolyline(curve);
+		painter.setBrush(Qt::NoBrush);
+		painter.setPen(Qt::NoPen);
+	}
+
+	QStylePainter stylePainter(m_view);
+	stylePainter.drawPixmap(0, 0, m_pixmap);
+}

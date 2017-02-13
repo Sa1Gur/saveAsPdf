@@ -1,0 +1,559 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ApplicationDataForm</class>
+ <widget class="QDialog" name="ApplicationDataForm">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>286</width>
+    <height>307</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <widget class="QLineEdit" name="lineEdit_Name">
+   <property name="geometry">
+    <rect>
+     <x>60</x>
+     <y>10</y>
+     <width>113</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Age">
+   <property name="geometry">
+    <rect>
+     <x>60</x>
+     <y>40</y>
+     <width>51</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Sex">
+   <property name="geometry">
+    <rect>
+     <x>220</x>
+     <y>10</y>
+     <width>51</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Height">
+   <property name="geometry">
+    <rect>
+     <x>60</x>
+     <y>70</y>
+     <width>51</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Weight">
+   <property name="geometry">
+    <rect>
+     <x>220</x>
+     <y>40</y>
+     <width>51</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Address">
+   <property name="geometry">
+    <rect>
+     <x>60</x>
+     <y>100</y>
+     <width>211</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Phone">
+   <property name="geometry">
+    <rect>
+     <x>60</x>
+     <y>130</y>
+     <width>113</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Purpose">
+   <property name="geometry">
+    <rect>
+     <x>110</x>
+     <y>160</y>
+     <width>113</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Department">
+   <property name="geometry">
+    <rect>
+     <x>70</x>
+     <y>190</y>
+     <width>113</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Ward">
+   <property name="geometry">
+    <rect>
+     <x>230</x>
+     <y>190</y>
+     <width>51</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Physician">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>280</y>
+     <width>113</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Name">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>10</y>
+     <width>31</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>ФИО</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Age">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>40</y>
+     <width>41</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Возраст</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Height">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>70</y>
+     <width>21</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Рост</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Sex">
+   <property name="geometry">
+    <rect>
+     <x>190</x>
+     <y>10</y>
+     <width>21</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Пол</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Weight">
+   <property name="geometry">
+    <rect>
+     <x>190</x>
+     <y>40</y>
+     <width>21</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Вес</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Address">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>100</y>
+     <width>41</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Адрес</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Phone">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>130</y>
+     <width>46</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Телефон</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Purpose">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>160</y>
+     <width>101</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Цель обследования</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Department">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>190</y>
+     <width>61</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Отделение</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Ward">
+   <property name="geometry">
+    <rect>
+     <x>190</x>
+     <y>190</y>
+     <width>41</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Палата</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Physician">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>280</y>
+     <width>31</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Врач</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Investigation">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>220</y>
+     <width>101</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Дата обследования</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_Analyze">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>250</y>
+     <width>71</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Дата анализа</string>
+   </property>
+  </widget>
+  <widget class="QDateEdit" name="dateEdit_Investigation">
+   <property name="geometry">
+    <rect>
+     <x>120</x>
+     <y>220</y>
+     <width>161</width>
+     <height>22</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QDateEdit" name="dateEdit_Analyze">
+   <property name="geometry">
+    <rect>
+     <x>120</x>
+     <y>250</y>
+     <width>161</width>
+     <height>22</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="saveButton">
+   <property name="geometry">
+    <rect>
+     <x>200</x>
+     <y>280</y>
+     <width>75</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Сохранить</string>
+   </property>
+  </widget>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>saveButton</sender>
+   <signal>pressed()</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>accept()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>237</x>
+     <y>291</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>lineEdit_Address</sender>
+   <signal>textChanged(QString)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>165</x>
+     <y>109</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>lineEdit_Age</sender>
+   <signal>textChanged(QString)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>85</x>
+     <y>49</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>lineEdit_Department</sender>
+   <signal>textChanged(QString)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>126</x>
+     <y>199</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>lineEdit_Height</sender>
+   <signal>textChanged(QString)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>85</x>
+     <y>79</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>lineEdit_Name</sender>
+   <signal>textChanged(QString)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>116</x>
+     <y>19</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>lineEdit_Phone</sender>
+   <signal>textChanged(QString)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>116</x>
+     <y>139</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>lineEdit_Physician</sender>
+   <signal>textChanged(QString)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>96</x>
+     <y>289</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>lineEdit_Purpose</sender>
+   <signal>textChanged(QString)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>166</x>
+     <y>169</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>lineEdit_Sex</sender>
+   <signal>textChanged(QString)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>245</x>
+     <y>19</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>lineEdit_Ward</sender>
+   <signal>textChanged(QString)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>255</x>
+     <y>199</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>lineEdit_Weight</sender>
+   <signal>textChanged(QString)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>245</x>
+     <y>49</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>dateEdit_Analyze</sender>
+   <signal>dateChanged(QDate)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>200</x>
+     <y>260</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>dateEdit_Investigation</sender>
+   <signal>dateChanged(QDate)</signal>
+   <receiver>ApplicationDataForm</receiver>
+   <slot>onData()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>200</x>
+     <y>230</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>142</x>
+     <y>153</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+ <slots>
+  <slot>onData()</slot>
+ </slots>
+</ui>

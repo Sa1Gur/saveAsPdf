@@ -1,0 +1,662 @@
+#include "eventstatisticclasses.h"
+
+#include <numeric>
+
+#include "trends/trends.h"
+#include "trends/position.h"
+#include "misc/minmax.h"
+#include "misc/muldiv.h"
+/*!
+Получает все эпизоды сна из БД записи
+и сохраняет их во внутреннюю структуру.
+*/
+Dreams::Dreams()
+{
+	QSqlQuery query;
+	query.prepare("SELECT * FROM episodes WHERE type = ?");
+	query.addBindValue(Episode::Dream);
+	query.exec();
+
+	while (query.next())
+	{
+		m_dreams.push_back(new Episode(query));
+	}
+}
+
+Dreams::~Dreams()
+{
+	qDeleteAll(m_dreams.begin(), m_dreams.end());
+}
+
+/*!
+Возвращает true, если episode находится
+в границах какого-либо из эпизодов сна.
+*/
+bool Dreams::contains(const Episode &episode) const
+{
+	foreach(Episode *dream, m_dreams)
+	{
+		if (dream->contains(episode))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/*!
+Возвращает true, если секунда находится
+в границах какого-либо из эпизодов сна.
+*/
+bool Dreams::contains(int second) const
+{
+	foreach(Episode *dream, m_dreams)
+	{
+		if (second >= dream->bsec() && second <= dream->esec())
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/*!
+Возвращает длительность всех эпизодов сна (сек)
+*/
+int Dreams::length() const
+{
+	int result = 0;
+
+	foreach(Episode *dream, m_dreams)
+	{
+		result += dream->length();
+	}
+
+	return result;
+}
+
+/*!
+Получает все эпизоды апноэ из БД записи
+и предварительно подсчитывает статистику
+*/
+Apneas::Apneas(const Dreams &dreams)
+	: m_centrNum(0),
+	m_centrAvg(0),
+	m_centrMin(0),
+	m_centrMax(0),
+	m_obstrNum(0),
+	m_obstrAvg(0),
+	m_obstrMin(0),
+	m_obstrMax(0),
+	m_hypopNum(0),
+	m_hypopAvg(0),
+	m_hypopMin(0),
+	m_hypopMax(0),
+	m_dreamLen(dreams.length())
+{
+	QSqlQuery query;
+	query.prepare("SELECT * FROM episodes WHERE type BETWEEN ? AND ?");
+	query.addBindValue(Episode::Hypopnea);
+	query.addBindValue(Episode::ObstrApnea);
+	query.exec();
+
+	SortHelper<int> centrSort;
+	SortHelper<int> obstrSort;
+	SortHelper<int> hypopSort;
+
+	while (query.next())
+	{
+		Episode episode(query);
+
+		if (dreams.contains(episode))
+		{
+			switch (episode.type())
+			{
+			case Episode::Hypopnea:
+				++m_hypopNum;
+				m_hypopAvg += episode.length();
+				hypopSort(episode.length());
+				break;
+
+			case Episode::CentrApnea:
+				++m_centrNum;
+				m_centrAvg += episode.length();
+				centrSort(episode.length());
+				break;
+
+			case Episode::ObstrApnea:
+				++m_obstrNum;
+				m_obstrAvg += episode.length();
+				obstrSort(episode.length());
+				break;
+			}
+		}
+	}
+
+	m_centrMin = centrSort.minVal();
+	m_centrMax = centrSort.maxVal();
+	m_centrAvg = safeDiv(m_centrAvg, m_centrNum);
+	m_obstrMin = obstrSort.minVal();
+	m_obstrMax = obstrSort.maxVal();
+	m_obstrAvg = safeDiv(m_obstrAvg, m_obstrNum);
+	m_hypopMin = hypopSort.minVal();
+	m_hypopMax = hypopSort.maxVal();
+	m_hypopAvg = safeDiv(m_hypopAvg, m_hypopNum);
+
+	EnvironmentPtr pEnv;
+	if (!pEnv->testOption(FullMode))
+	{
+		m_centrNum = 0;
+		m_centrAvg = 0;
+		m_centrMin = 0;
+		m_centrMax = 0;
+	}
+}
+
+/*!
+Возвращает количество эпизодов апноэ заданного типа
+*/
+int Apneas::num(int which) const
+{
+	switch (which)
+	{
+	case Episode::CentrApnea:
+		return m_centrNum;
+
+	case Episode::ObstrApnea:
+		return m_obstrNum;
+
+	case Episode::Hypopnea:
+		return m_hypopNum;
+
+	case Episode::All:
+		return (m_centrNum + m_obstrNum + m_hypopNum);
+
+	default:
+		return 0;
+	}
+}
+
+/*!
+Возвращает среднюю продолжительность эпизода апноэ заданного типа
+*/
+int Apneas::avg(int which) const
+{
+	switch (which)
+	{
+	case Episode::CentrApnea:
+		return m_centrAvg;
+
+	case Episode::ObstrApnea:
+		return m_obstrAvg;
+
+	case Episode::Hypopnea:
+		return m_hypopAvg;
+
+	case Episode::All:
+		return safeDiv(m_centrAvg * m_centrNum + m_obstrAvg * m_obstrNum + m_hypopAvg * m_hypopNum, num(Episode::All));
+
+	default:
+		return 0;
+	}
+}
+
+/*!
+Возвращает минимальную продолжительность эпизода апноэ заданного типа
+*/
+int Apneas::min(int which) const
+{
+	switch (which)
+	{
+	case Episode::CentrApnea:
+		return m_centrMin;
+
+	case Episode::ObstrApnea:
+		return m_obstrMin;
+
+	case Episode::Hypopnea:
+		return m_hypopMin;
+
+	case Episode::All:
+		return qMinNoFake(m_centrMin, qMinNoFake(m_obstrMin, m_hypopMin, 0), 0);
+
+	default:
+		return 0;
+	}
+}
+
+/*!
+Возвращает максимальную продолжительность эпизода апноэ заданного типа
+*/
+int Apneas::max(int which) const
+{
+	switch (which)
+	{
+	case Episode::CentrApnea:
+		return m_centrMax;
+
+	case Episode::ObstrApnea:
+		return m_obstrMax;
+
+	case Episode::Hypopnea:
+		return m_hypopMax;
+
+	case Episode::All:
+		return qMax(m_centrMax, qMax(m_obstrMax, m_hypopMax));
+
+	default:
+		return 0;
+	}
+}
+
+/*!
+Возвращает ИАГ для заданного типа апноэ
+*/
+qreal Apneas::ahi(int which) const
+{
+	switch (which)
+	{
+	case Episode::CentrApnea:
+		return safeDiv<qreal>(m_centrNum, m_dreamLen / 3600);
+
+	case Episode::ObstrApnea:
+		return safeDiv<qreal>(m_obstrNum, m_dreamLen / 3600);
+
+	case Episode::Hypopnea:
+		return safeDiv<qreal>(m_hypopNum, m_dreamLen / 3600);
+
+	case Episode::All:
+		return safeDiv<qreal>(num(Episode::All), m_dreamLen / 3600);
+
+	default:
+		return 0;
+	}
+}
+
+/*!
+Получает все эпизоды десатурации из БД записи
+и предварительно подсчитывает статистику
+*/
+Desaturations::Desaturations(const Dreams &dreams)
+	: m_num_2(0),
+	m_num_3(0),
+	m_num_4_9(0),
+	m_num_10_20(0),
+	m_numMore_20(0),
+	m_dreamsLen(dreams.length())
+{
+	QSqlQuery query;
+	query.prepare("SELECT * FROM episodes WHERE type = ?");
+	query.addBindValue(Episode::Desaturation);
+	query.exec();
+
+	while (query.next())
+	{
+		Episode episode(query);
+
+		if (dreams.contains(episode))
+		{
+			if (episode.diff() >= 1.5 && episode.diff() <= 2.499)
+			{
+				++m_num_2;
+			}
+			else if (episode.diff() >= 2.5 && episode.diff() <= 3.499)
+			{
+				++m_num_3;
+			}
+			else if (episode.diff() >= 3.5 && episode.diff() <= 9.499)
+			{
+				++m_num_4_9;
+			}
+			else if (episode.diff() >= 9.5 && episode.diff() <= 20.499)
+			{
+				++m_num_10_20;
+			}
+			else if (episode.diff() >= 20.5)
+			{
+				++m_numMore_20;
+			}
+		}
+	}
+}
+
+/*!
+Возвращает количество эпизодов десатурации, в которых
+величина падения сатурации составляет от from до to
+*/
+int Desaturations::num(int from, int to) const
+{
+	if (from == 2 && to == 2)
+	{
+		return m_num_2;
+	}
+	else if (from == 3 && to == 3)
+	{
+		return m_num_3;
+	}
+	else if (from == 4 && to == 9)
+	{
+		return m_num_4_9;
+	}
+	else if (from == 10 && to == 20)
+	{
+		return m_num_10_20;
+	}
+	else if (from == 20 && to > 20)
+	{
+		return m_numMore_20;
+	}
+	else if (from == 0 && to == 100)
+	{
+		return total();
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+/*!
+Возвращает ODI для эпизодов десатурации, в которых
+величина падения сатурации составляет от from до to
+*/
+qreal Desaturations::odi(int from, int to) const
+{
+	if (from == 2 && to == 2)
+	{
+		return safeDiv<qreal>(m_num_2, m_dreamsLen / 3600);
+	}
+	else if (from == 3 && to == 3)
+	{
+		return safeDiv<qreal>(m_num_3, m_dreamsLen / 3600);
+	}
+	else if (from == 4 && to == 9)
+	{
+		return safeDiv<qreal>(m_num_4_9, m_dreamsLen / 3600);
+	}
+	else if (from == 10 && to == 20)
+	{
+		return safeDiv<qreal>(m_num_10_20, m_dreamsLen / 3600);
+	}
+	else if (from == 20 && to > 20)
+	{
+		return safeDiv<qreal>(m_numMore_20, m_dreamsLen / 3600);
+	}
+	else if (from == 0 && to == 100)
+	{
+		return totalODI();
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+/*!
+Возвращает общее количество десатураций
+*/
+int Desaturations::total() const
+{
+	return (m_num_2 + m_num_3 + m_num_4_9 + m_num_10_20 + m_numMore_20);
+}
+
+/*!
+Возвращает общий индекс десатурации
+*/
+qreal Desaturations::totalODI() const
+{
+	return safeDiv<qreal>(total(), m_dreamsLen / 3600);
+}
+
+/*!
+
+*/
+Saturation::Saturation(const Dreams &dreams)
+{
+	reload(dreams);
+}
+
+bool lessThan(const QVector2D & e1, const QVector2D & e2)
+{
+	if (e1.x() < e2.x())
+		return true;
+	else
+		return false;
+}
+
+void Saturation::reload(const Dreams &dreams)
+{
+	m_bdt.clear();
+	m_bdt.insert(qMakePair(95, 100), 0);
+	m_bdt.insert(qMakePair(90, 94), 0);
+	m_bdt.insert(qMakePair(85, 89), 0);
+	m_bdt.insert(qMakePair(80, 84), 0);
+	m_bdt.insert(qMakePair(75, 79), 0);
+	m_bdt.insert(qMakePair(70, 74), 0);
+	m_bdt.insert(qMakePair(65, 69), 0);
+	m_bdt.insert(qMakePair(60, 64), 0);
+	m_bdt.insert(qMakePair(55, 59), 0);
+	m_bdt.insert(qMakePair(50, 54), 0);
+	m_bdt.insert(qMakePair(0, 50), 0);
+
+	TrendsPtr trends;
+	if (Trend *spo2 = trends->trends().at(SPO2))
+	{
+		std::vector<int>	wakeValues;
+		std::vector<int>	sleepValues;
+		QVector<QVector2D>	sleepEpisodes;//for extremum episode navigation
+
+		for (int i = 0; i < spo2->values().size(); ++i)
+		{
+			double val = spo2->values().at(i);
+			if (dreams.contains(i))
+			{
+				sleepValues.push_back(qRound(val));
+				QVector2D gg(qRound(val), i);
+				sleepEpisodes.push_back(gg);
+
+				if (val >= 94.5 && val <= 99.9)
+				{
+					++m_bdt[qMakePair(95, 100)];
+				}
+				else if (val >= 89.5 && val <= 94.499)
+				{
+					++m_bdt[qMakePair(90, 94)];
+				}
+				else if (val >= 84.5 && val <= 89.499)
+				{
+					++m_bdt[qMakePair(85, 89)];
+				}
+				else if (val >= 79.5 && val <= 84.499)
+				{
+					++m_bdt[qMakePair(80, 84)];
+				}
+				else if (val >= 74.5 && val <= 79.499)
+				{
+					++m_bdt[qMakePair(75, 79)];
+				}
+				else if (val >= 69.5 && val <= 74.499)
+				{
+					++m_bdt[qMakePair(70, 74)];
+				}
+				else if (val >= 64.5 && val <= 69.499)
+				{
+					++m_bdt[qMakePair(65, 69)];
+				}
+				else if (val >= 59.5 && val <= 64.499)
+				{
+					++m_bdt[qMakePair(60, 64)];
+				}
+				else if (val >= 54.5 && val <= 59.499)
+				{
+					++m_bdt[qMakePair(55, 59)];
+				}
+				else if (val >= 49.5 && val <= 54.499)
+				{
+					++m_bdt[qMakePair(50, 54)];
+				}
+				else if (val >= 0 && val <= 50.499)
+				{
+					++m_bdt[qMakePair(0, 50)];
+				}
+			}
+			else
+			{
+				wakeValues.push_back(qRound(val));
+			}
+		}
+
+		BreakdownTable::iterator iter = m_bdt.begin();
+		while (iter != m_bdt.end())
+		{
+			iter.value() /= 60.0;
+			++iter;
+		}
+
+		wakeValues.erase(std::remove(wakeValues.begin(), wakeValues.end(), spo2->fakeValue()), wakeValues.end());
+		sleepValues.erase(std::remove(sleepValues.begin(), sleepValues.end(), spo2->fakeValue()), sleepValues.end());
+
+		//<-extremum episode navigation
+		qSort(sleepEpisodes.begin(), sleepEpisodes.end(), lessThan);
+		auto iter_ = sleepEpisodes.begin();
+		while (iter_ != sleepEpisodes.end())
+		{
+			if (iter_->x() != spo2->fakeValue())
+			{
+				m_minPos = iter_->y();
+				break;
+			}
+			++iter_;
+		}
+		//extremum episode navigation->
+
+		m_base = safeDiv<int>(std::accumulate(wakeValues.begin(), wakeValues.end(), 0), wakeValues.size());//wake hours value
+
+		if (!sleepValues.empty())
+		{
+			m_avg = safeDiv<int>(std::accumulate(sleepValues.begin(), sleepValues.end(), 0), sleepValues.size());
+			m_min = *std::min_element(sleepValues.begin(), sleepValues.end());
+			m_max = *std::max_element(sleepValues.begin(), sleepValues.end());
+		}
+		else
+		{
+			m_avg = 0;
+			m_min = 0;
+			m_max = 0;
+		}
+	}
+}
+
+qreal Saturation::duration(int from, int to) const
+{
+	return m_bdt[qMakePair(from, to)];
+}
+
+int Saturation::base() const
+{
+	return m_base;
+}
+
+int Saturation::avg() const
+{
+	return m_avg;
+}
+
+int Saturation::min() const
+{
+	return m_min;
+}
+
+int Saturation::minPos() const
+{
+	return m_minPos;
+}
+
+int Saturation::max() const
+{
+	return m_max;
+}
+
+Pulse::Pulse(const Dreams &dreams)
+{
+	reload(dreams);
+}
+
+void Pulse::reload(const Dreams &dreams)
+{
+	TrendsPtr trends;
+	if (Trend *pulse = trends->trends().at(PULSE))
+	{
+		std::vector<int> wakeValues;
+		std::vector<int> sleepValues;
+		QVector<QVector2D>	sleepEpisodes;//for extremum episode navigation
+
+		for (int i = 0; i < pulse->values().size(); ++i)
+		{
+			double val = pulse->values().at(i);
+			if (dreams.contains(i))
+			{
+				sleepValues.push_back(qRound(val));
+				QVector2D gg(qRound(val), i);
+				sleepEpisodes.push_back(gg);
+			}
+			else
+			{
+				wakeValues.push_back(qRound(val));
+			}
+		}
+
+		wakeValues.erase(std::remove(wakeValues.begin(), wakeValues.end(), pulse->fakeValue()), wakeValues.end());
+		sleepValues.erase(std::remove(sleepValues.begin(), sleepValues.end(), pulse->fakeValue()), sleepValues.end());
+
+
+		//<-extremum episode navigation
+		qSort(sleepEpisodes.begin(), sleepEpisodes.end(), lessThan);
+		auto iter_ = sleepEpisodes.begin();
+		while (iter_ != sleepEpisodes.end())
+		{
+			if (iter_->x() != pulse->fakeValue())
+			{
+				m_minPos = iter_->y();
+				break;
+			}
+			++iter_;
+		}
+		//extremum episode navigation->
+
+		if (!sleepValues.empty())
+		{
+			m_avg = safeDiv<int>(std::accumulate(sleepValues.begin(), sleepValues.end(), 0), sleepValues.size());
+			m_min = *std::min_element(sleepValues.begin(), sleepValues.end());
+			m_max = *std::max_element(sleepValues.begin(), sleepValues.end());
+		}
+		else
+		{
+			m_avg = 0;
+			m_min = 0;
+			m_max = 0;
+		}
+	}
+}
+
+int Pulse::avg() const
+{
+	return m_avg;
+}
+
+int Pulse::min() const
+{
+	return m_min;
+}
+
+int Pulse::minPos() const
+{
+	return m_minPos;
+}
+
+int Pulse::max() const
+{
+	return m_max;
+}

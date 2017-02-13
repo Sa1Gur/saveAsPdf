@@ -1,0 +1,23 @@
+#ifndef TRENDING_H
+#define TRENDING_H
+
+#include "ui_print.h"
+
+class TrendingDlg: public QDialog, public Ui::PrintForm
+{
+	Q_OBJECT
+
+public:
+	TrendingDlg(QWidget *parent = 0);
+	~TrendingDlg();
+
+public Q_SLOTS:
+	void preview();
+	void draw(QPrinter *printer);
+	void print();
+
+private:
+	QPrinter *m_printer;
+};
+
+#endif // TRENDING_H

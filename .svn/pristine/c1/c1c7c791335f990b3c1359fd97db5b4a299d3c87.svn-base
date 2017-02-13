@@ -1,0 +1,233 @@
+#include "spo2wnd.h"
+#include "trends/trends.h"
+#include "trends/spo2.h"
+#include <QtGui/QWheelEvent>
+#include <QtSql/QSqlQuery>
+#include <QtGui/QStylePainter>
+#include <QtGui/QMessageBox>
+#include "episodewnd.h"
+
+Spo2Wnd::Spo2Wnd(QWidget *parent)
+: QWidget(parent)
+{
+	m_layout = new QHBoxLayout();
+	
+	Scale::UnitList ranges;
+	ranges.push_back(Scale::UnitList::value_type("100",	"95"));
+	ranges.push_back(Scale::UnitList::value_type("100",	"90"));
+	ranges.push_back(Scale::UnitList::value_type("100",	"80"));
+	ranges.push_back(Scale::UnitList::value_type("100",	"70"));
+	ranges.push_back(Scale::UnitList::value_type("100",	"50"));
+	ranges.push_back(Scale::UnitList::value_type("100",	"0"));
+	const int startIndex = 3;
+	m_range = new ScaleWnd(MaxData, ranges, startIndex, ScaleWnd::RangedZooming, -ranges[startIndex].second.toInt() / 2);
+	m_range->setWindowTitle(tr("SpO2, %"));
+	
+	m_view = new QWidget();
+	m_layout->addWidget(m_range);
+	m_layout->addWidget(m_view);
+	m_layout->setContentsMargins(0, 0, 0, 0);
+	m_layout->setSpacing(0);
+	setLayout(m_layout);
+
+	m_view->installEventFilter(this);
+	setRange(*(ranges.begin() + startIndex));
+	connect(m_range,	SIGNAL(scaleChanged(Scale::Unit)),	this, SLOT(setRange(Scale::Unit)));
+	connect(m_range,	SIGNAL(zeroChanged(int)),			this, SLOT(setZero(int)));
+
+	m_zero = -ranges[startIndex].second.toInt() / 2;
+}
+
+Spo2Wnd::~Spo2Wnd()
+{
+	qDeleteAll(m_ews);
+}
+
+void Spo2Wnd::placeEpisodes()
+{
+	EnvironmentPtr	pEnv;
+	int				start	= pEnv->currentSecond(),
+					end		= pEnv->currentSecond() + pEnv->secsPerScreen();
+
+	QSqlQuery query;
+	query.prepare("SELECT * FROM episodes WHERE (type = ?) AND ((bsec BETWEEN ? AND ?) OR (esec BETWEEN ? AND ?));");
+	query.addBindValue(Episode::Desaturation);
+	query.addBindValue(start);
+	query.addBindValue(end);
+	query.addBindValue(start);
+	query.addBindValue(end);
+	query.exec();
+
+	while (query.next())
+	{
+		Episode e(query);
+		
+		m_ews.push_back(new EpisodeWnd(e, m_view, this));
+		m_ews.last()->setGeometry(((e.bsec() - start) * m_view->rect().width()) / pEnv->secsPerScreen(), m_view->rect().top() + 1, (e.length() * m_view->rect().width()) / pEnv->secsPerScreen(), m_view->rect().height() - 2);
+		m_ews.last()->show();
+	}
+	
+	query.clear();
+}
+
+void Spo2Wnd::clearEpisodes()
+{
+	qDeleteAll(m_ews);
+	m_ews.clear();
+}
+
+void Spo2Wnd::setRange(const Scale::Unit &range)
+{
+	m_upper = 50 + (range.first.toInt() - range.second.toInt()) / 2;//range.first.toInt();
+	m_lower = 50 - (range.first.toInt() - range.second.toInt()) / 2;//range.second.toInt();
+	m_view->update();
+}
+
+void Spo2Wnd::setZero(int zero)
+{
+	m_zero = zero;
+	m_view->update();
+}
+
+void Spo2Wnd::resizeEvent(QResizeEvent *e)
+{
+	EnvironmentPtr pEnv;
+	for (int i = 0; i < m_ews.size(); ++i)
+	{
+		QVariant	bsec	= m_ews[i]->property("bsec"),
+					length	= m_ews[i]->property("length");
+		m_ews[i]->setGeometry(((bsec.toInt() - pEnv->currentSecond()) * m_view->rect().width()) / pEnv->secsPerScreen(), m_view->rect().top() + 1, (length.toInt() * m_view->rect().width()) / pEnv->secsPerScreen(), m_view->geometry().height() - 2);
+	}
+}
+
+bool Spo2Wnd::eventFilter(QObject *target, QEvent *e)
+{
+	bool needUpdate = false;
+	if (target == m_view)
+	{
+		if (e->type() == QEvent::Paint)
+		{
+			needUpdate = true;
+		}
+		else if (e->type() == QEvent::MouseButtonPress)
+		{
+			QMouseEvent *me = dynamic_cast<QMouseEvent *>(e);
+
+			if (me->buttons() & Qt::LeftButton)
+			{
+				EnvironmentPtr pEnv;
+				if (pEnv->testOption(MarkMode))
+				{
+					int bsec = pEnv->currentSecond() + (me->pos().x() * pEnv->secsPerScreen()) / m_view->width();
+					
+					TrendsPtr	ptr;
+					Trend		*trend = ptr->trends().at(SPO2);
+					if (Spo2	*pSpo2 = dynamic_cast<Spo2*>(trend))
+					{
+						Spo2Params spo2params;
+						pEnv->spo2Params(spo2params);
+						Episode episode(bsec, bsec + spo2params.minDesaturationLenght, Episode::Desaturation, pSpo2->values().value(bsec, 0), pSpo2->values().value(bsec + 10, 0));
+						if (episode.insert())
+						{						
+							m_ews.push_back(new EpisodeWnd(episode, m_view, this));
+							m_ews.last()->setGeometry(((episode.bsec() - pEnv->currentSecond()) * m_view->rect().width()) / pEnv->secsPerScreen(), m_view->rect().top() + 1, (episode.length() * m_view->rect().width()) / pEnv->secsPerScreen(), m_view->rect().height() - 2);
+							m_ews.last()->show();
+						}
+					}
+				}
+			}
+		}
+	}
+
+	bool res = QWidget::eventFilter(target, e);
+
+	if (needUpdate)
+	{
+		onPaintView();
+	}
+
+	return res;
+}
+
+void Spo2Wnd::onPaintView()
+{
+	m_pixmap = QPixmap(size());
+	m_pixmap.fill(m_view, 0, 0);
+	QPainter painter(&m_pixmap);
+	painter.initFrom(m_view);
+
+	EnvironmentPtr	pEnv;
+	ColorScheme		cs = pEnv->colorScheme(Red);
+	painter.fillRect(m_view->rect(), cs.second);
+
+	TrendsPtr	ptr;
+	Trend		*trend = ptr->trends().at(SPO2);
+	if (Spo2	*pSpo2 = dynamic_cast<Spo2*>(trend))
+	{
+		//RawData		ir(pEnv->samplePerScreen());		// данные для IR
+		//RawData		red(pEnv->samplePerScreen());		// данные для RED
+		//RawData		smoothed(pEnv->samplePerScreen());	// буфер для сглаженной кривой
+		//Spo2::Waves temp;
+		//pEnv->load(Ir,	pEnv->currentSample(), ir);
+		//pEnv->load(Red, pEnv->currentSample(), red);
+		//pSpo2->build(ir, red, smoothed, pEnv->currentSample(), temp, false);
+
+		painter.setBrush(cs.first);
+		painter.setPen(cs.first);
+
+		int xOffset = painter.fontMetrics().averageCharWidth(),
+			yOffset = painter.fontMetrics().height() + 3;
+
+		//for (int i = 0; i < temp.size() - 1; ++i)
+		for (int i = 0, j = pEnv->currentSecond(); i < pEnv->secsPerScreen(); ++i, ++j)
+		{
+			int		value1	= //temp[i].spo2,//
+					pSpo2->chanval().value(j,		0),
+					value2	= //temp[i + 1].spo2,//
+					pSpo2->chanval().value(j + 1,	0),
+					_value1 = //temp[i].spo2
+					pSpo2->chanval().value(j,		0) + m_zero,
+					_value2 = //temp[i + 1].spo2
+					pSpo2->chanval().value(j + 1,	0) + m_zero;
+
+			qreal	x		= (i * m_view->rect().width()) / pEnv->secsPerScreen(),
+					y		= (_value1 > m_upper) ? 1 : (_value1 < m_lower) ? (m_view->rect().bottom() - 1) : ((_value1 - m_upper) * m_view->rect().height()) / (m_lower - m_upper);
+			
+			if (value1 != Spo2Params::fakeValue && value2 != Spo2Params::fakeValue)
+			{
+				QPolygonF curve;
+				curve << QPointF(x, y);
+				curve << QPointF(//(m_view->rect().width() * (pSpo2->chanval().value(i + 1, 0).mnPos + pSpo2->chanval().value(i + 1, 0).mxPos - 2 * pEnv->currentSample()) / (2 * pEnv->samplePerScreen())),
+					((i + 1) * m_view->rect().width()) / pEnv->secsPerScreen(), 
+					(_value2 > m_upper) ? 1 : (_value2 < m_lower) ? (m_view->rect().bottom() - 1) : ((_value2 - m_upper) * m_view->rect().height()) / (m_lower - m_upper));
+				painter.drawPolyline(curve);
+				
+				if (pEnv->msecsPerScreen() <= TWO_MIN)
+				{
+					painter.drawEllipse(QPointF(x, y), 2, 2);
+					painter.rotate(-90.0);
+					QPointF point((_value1 > m_upper) ? (- y - yOffset) : (- y + 3), x + xOffset);
+					painter.drawText(point, QString("%1").arg(value1));
+					painter.rotate(90.0);
+				}
+			}
+			else if (value1 != Spo2Params::fakeValue && value2 == Spo2Params::fakeValue)
+			{
+				if (pEnv->msecsPerScreen() <= TWO_MIN)
+				{
+					painter.drawEllipse(QPointF(x, y), 2, 2);
+					painter.rotate(-90.0);
+					QPointF point((_value1 > m_upper) ? (- y - yOffset) : (- y + 3), x + xOffset);
+					painter.drawText(point, QString("%1").arg(value1));
+					painter.rotate(90.0);
+				}
+			}
+		}
+		
+		painter.setBrush(Qt::NoBrush);
+		painter.setPen(Qt::NoPen);
+	}
+
+	QStylePainter stylePainter(m_view);
+	stylePainter.drawPixmap(0, 0, m_pixmap);
+}

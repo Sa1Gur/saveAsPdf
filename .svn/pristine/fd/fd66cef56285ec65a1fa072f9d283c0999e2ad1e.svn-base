@@ -1,0 +1,17 @@
+#ifndef BASICS_H
+#define BASICS_H
+
+#include "ui_basics.h"
+
+class BasicsDlg: public QDialog, public Ui::BasicsForm
+{
+	Q_OBJECT
+
+public:
+	BasicsDlg(QWidget *parent = 0);
+
+public Q_SLOTS:
+	void accept();
+};
+
+#endif // BASICS_H

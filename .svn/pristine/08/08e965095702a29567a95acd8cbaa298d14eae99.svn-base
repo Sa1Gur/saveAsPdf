@@ -1,0 +1,64 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html>
+<head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <title>Таблица событий</title>
+</head>
+<body>
+<table width="100%" cellpadding="2" cellspacing="1" border="0" bgcolor="black">
+<tr bgcolor="white"><td align="center">Astrocard&reg; SomnoStudio - Таблица событий</td></tr>
+</table>
+<br />
+<table width="100%" cellpadding="2" cellspacing="1" border="0" bgcolor="black">
+<tr bgcolor="white">
+    <td width="10%"><b>Пациент:</b></td>
+	<td colspan="3" align="center">%{name}</td>
+	<td><b>Пол:</b></td>
+	<td align="center">%{sex}</td>
+	<td width="10%"><b>Дата обследования:</b></td>
+	<td align="center">%{idate}</td>
+</tr>
+<tr bgcolor="white">
+    <td width="10%"><b>Возраст:</b></td>
+    <td align="center">%{age}</td>
+    <td><b>Рост:</b></td>
+    <td align="center">%{height}</td>
+    <td><b>Вес:</b></td>
+    <td align="center">%{weight}</td>
+    <td width="10%"><b>Дата анализа:</b></td>
+    <td align="center">%{adate}</td>
+</tr>
+<tr bgcolor="white">
+    <td width="10%"><b>Адрес:</b></td>
+    <td colspan="5" align="center">%{addr}</td>
+    <td width="10%"><b>Телефон:</b></td>
+    <td align="center">%{phone}</td>
+</tr>
+<tr bgcolor="white">
+    <td rowspan="3" width="10%" style="border-right: 0px"><b>Цель обследования:</b></td>
+    <td rowspan="3" colspan="5" style="border-left: 0px">%{purpose}</td>
+    <td width="10%"><b>Отделение:</b></td>
+    <td align="center">%{unit}</td>
+</tr>
+<tr bgcolor="white">
+    <td width="10%"><b>Палата:</b></td>
+    <td align="center">%{chamber}</td>
+</tr>
+<tr bgcolor="white">
+    <td width="10%"><b>Врач:</b></td>
+    <td align="center">%{doctor}</td>
+</tr>
+</table>
+<br />
+<table width="100%" cellpadding="2" cellspacing="1" border="0" bgcolor="black">
+<tr bgcolor="white">
+	<td><b>Время начала</b></td>
+	<td><b>Время окончания</b></td>
+	<td><b>Тип события</b></td>
+	<td><b>Начальное значение</b></td>
+	<td><b>Конечное значение</b></td>
+</tr>
+%{episodes}
+</table>
+</body>
+</html>

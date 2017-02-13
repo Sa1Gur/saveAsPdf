@@ -1,0 +1,154 @@
+#include "trend.h"
+#include "misc/median.h"
+#include "misc/muldiv.h"
+
+Trend::Trend(const QString &title, const QColor &color, int secPerUnit, uchar resval, uchar gradation)
+:	m_title(title),
+	m_color(color),
+	m_secPerUnit(secPerUnit),
+	m_resval(resval),
+	m_gradation(gradation)
+{
+}
+
+Trend::~Trend()
+{
+}
+
+/*!
+	Title for trend's graph.
+	
+	\return A string containing title.
+*/
+const QString &Trend::title() const
+{
+	return m_title;
+}
+
+/*!
+	Color for trend's graph.
+	
+	\return The QColor object containing color.
+*/
+const QColor &Trend::color() const
+{
+	return m_color;
+}
+
+/*!
+	Seconds per unit for trend's data.
+*/
+int	Trend::secPerUnit() const
+{
+	return m_secPerUnit;
+}
+
+/*!
+	Draw a trend on a target drawing context.
+	\param painter the target drawing context.
+	\param rect the bounding rectangle.
+	\param start starting second for drawing (zero-based)
+	\param stop stoping second for drawing
+*/
+void Trend::draw(QPainter *painter, const QRect &rect, int start, int stop) const
+{
+	Q_ASSERT(start >= 0);
+	Q_ASSERT(start <= stop);
+
+	if (int len = (stop - start) / secPerUnit())
+	{
+		if (len >= m_smoothed.size())
+		{
+			len = m_smoothed.size() - 1;
+		}
+		
+		start /= secPerUnit();
+		stop /= secPerUnit();
+		
+		if (stop >= m_smoothed.size())
+		{
+			stop = m_smoothed.size() - 1;
+		}
+		
+		painter->setPen(color());
+		
+		for (int i = start + 1, j = start; i <= stop; ++i,++j)
+		{
+			if (m_smoothed[i] != m_resval && m_smoothed[j] != m_resval)
+			{
+				QPolygonF curve;
+				
+				curve << QPointF((double)rect.left()   + muldiv<double>(j - start, rect.width(), len),	(double)rect.bottom() - muldiv<double>(m_smoothed[j], rect.height(), m_gradation));
+				curve << QPointF((double)rect.left()   + muldiv<double>(i - start, rect.width(), len),	(double)rect.bottom() - muldiv<double>(m_smoothed[i], rect.height(), m_gradation));
+				
+				painter->drawPolyline(curve);
+			}
+		}
+
+		painter->setPen(QPen());
+	}
+}
+
+void Trend::drawScale(QPainter *painter, const QRect &rect, const QRect &ext) const
+{
+	const int nLines = 10;
+	const int factor = m_gradation / nLines;
+	const int unitHeight = rect.height() / nLines;
+
+	QPen pen(Qt::gray, QPen().width(), Qt::DashLine);
+	
+	for (int i = 0; i <= nLines; ++i)
+	{
+		int y = rect.top() + (i * unitHeight);
+		if (!ext.isNull())
+		{
+			painter->setPen(pen);
+			painter->drawLine(ext.left(), y, ext.right(), y);
+			painter->setPen(QPen());
+		}
+		if (!(i % 2))
+		{
+			painter->drawText(QRect(rect.left(), y - unitHeight/2, rect.width(), unitHeight), Qt::AlignCenter, QString("%1").arg(m_gradation - (i * factor)));
+		}
+	}
+}
+
+const Trend::Values &Trend::values() const
+{
+	return m_values;
+}
+
+const Trend::Values &Trend::chanval() const
+{
+	return m_chanval;
+}
+
+const Trend::Values &Trend::smoothed() const
+{
+	return m_smoothed;
+}
+
+uchar Trend::fakeValue() const
+{
+	return m_resval;
+}
+
+uchar Trend::gradation() const
+{
+	return m_gradation;
+}
+
+void Trend::compress()
+{
+	m_smoothed.clear();
+
+	Values::const_iterator i = m_values.begin();
+
+	while (i < (m_values.end() - m_secPerUnit))
+	{
+		ushort res = 0;
+
+		m_smoothed.push_back( median<Values::value_type, Values::const_iterator>(i, i + secPerUnit(), m_resval) );
+		i += m_secPerUnit;
+	}
+}

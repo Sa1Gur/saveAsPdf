@@ -1,0 +1,54 @@
+#ifndef CHANNELWND_H
+#define CHANNELWND_H
+
+#include "main/curves.h"
+#include "scalewnd.h"
+#include "episodewnd.h"
+
+#include <QtGui/QHBoxLayout>
+
+class ChannelWnd: public QWidget
+{
+	Q_OBJECT
+
+public:
+	ChannelWnd(int index, QWidget *parent = 0);
+	~ChannelWnd();
+	
+signals:
+	void				doUpdateView();
+	void				delEp(Episode				episode);
+
+public Q_SLOTS:
+	void				placeEpisodes();
+	void				clearEpisodes();
+	void				deleteEpisode(Episode		episode);
+
+	void				scale_Change(int			Index);
+	//void				setRange(const Scale::Unit	&range);
+	virtual void				setScale(const Scale::Unit	&scale){};
+	void				setZero(int					zero);
+
+protected:
+	void				resizeEvent(QResizeEvent	*event);
+	bool				eventFilter(QObject			*target, QEvent *e);
+	void				onPaintView();
+
+	void				Init();
+	virtual ScaleWnd*	PlaceScale(Scale::UnitList* scales, int* startIndex){ return 0;};
+
+//public:
+	QHBoxLayout*		m_layout;
+	ScaleWnd*			m_scale;
+	//					m_range;
+	QWidget*			m_view;
+	DataCurve*			m_curve;
+	QPixmap				m_pixmap;
+	QList<EpisodeWnd *>	m_ews;
+	int					m_index,
+						m_zero,
+						m_upper,
+						m_lower;
+};
+
+#endif // CHANNELWND_H

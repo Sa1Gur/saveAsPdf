@@ -1,0 +1,664 @@
+#include "cannula.h"
+#include <QtCore/QFile>
+#include <QtGui/QMessageBox>
+#include "main/episode.h"
+#include "misc/smooth.h"
+#include "misc/minmax.h"
+
+const QString Cannula::canFilename_("can.bin");
+const QString Cannula::secFilename_("can.sec");
+
+int Cannula::max_[BufSize];
+int Cannula::min_[BufSize];
+int Cannula::maxpos_[BufSize];
+int Cannula::minpos_[BufSize];
+
+Cannula::Cannula(const QString &title, const QColor &color, QSplashScreen *splash)
+: Trend(title, color, 20, 0, 50)
+{
+	EnvironmentPtr pEnv;
+	pEnv->hypoParams(params_);
+	QString canPath(pEnv->createPath(canFilename_));
+	QString secPath(pEnv->createPath(secFilename_));
+
+	QString msg( QObject::tr("Расчет трендов дыхания... ") );
+	splash->showMessage(msg, Qt::AlignBottom);
+
+	QFile canFile(canPath);
+	QFile secFile(secPath);
+
+	if (!canFile.open(QIODevice::ReadOnly) || !secFile.open(QIODevice::ReadOnly))
+	{
+		canFile.close();
+		secFile.close();
+		QFile::remove(canPath);
+		QFile::remove(secPath);
+		
+		if (canFile.open(QIODevice::WriteOnly) && secFile.open(QIODevice::WriteOnly))
+		{
+			quint32 timePiece = pEnv->sec2sample(secPerUnit());
+			
+			m_values.resize(pEnv->secsTotal());
+			dsec_.resize(pEnv->secsTotal());
+			
+			if (int nPieces = pEnv->sampleTotal()/timePiece)
+			{
+				RawData rawdata(timePiece);	// временные данные
+				RawData smoothed(timePiece);	// буфер для сглаженной кривой
+				
+					
+				const int expectedSize = params_.relativeLength / secPerUnit();
+				RawData slideAv;
+				RawData::value_type amplitude = 0;
+				bool hypopnea	= false;
+				int tenSecs		= pEnv->sec2sample(10),
+					hypoStart	= 0,
+					hypoEnd		= 0;
+				
+				bool startAnalisys = false;
+				
+				for (int i = 0, iCount = 0; i < nPieces; ++i, iCount += secPerUnit())
+				{
+					int start = i * timePiece;
+					pEnv->load(Cann, start, rawdata);
+					
+					MMData mmp;
+					build(rawdata, mmp);
+
+					Cannula::Waves temp;
+					build(rawdata, smoothed, temp);
+					if (params_.automatic)
+					{
+						QDateTime qtime = pEnv->sample2NativTime(start);
+						if (qtime.time().hour() == 2)
+						{
+							if (qtime.time().minute() == 37)
+							{
+								int ttt =0;
+									ttt++;
+							}
+						}
+
+						NewAnalysis(temp, amplitude, hypopnea, hypoStart, hypoEnd, start);
+
+						//----------- HYPOPNEA ANALYSIS -----------
+						//bool calculate = false;
+
+						//if (params_.method == HypoParams::Relative)
+						//{
+						//	RawData::value_type aTemp = 0;
+						//	int sizeV = 2 * (mmp.size() / 2);
+						//	for (int j = 0; j < sizeV; j += 2)
+						//	{
+						//		aTemp += qAbs(rawdata[mmp[j + 1]] - rawdata[mmp[j]]) / sizeV;
+						//	}
+						//	
+						//	slideAv.push_back(aTemp);
+						//	
+						//	if (slideAv.size() == expectedSize + 1)
+						//	{
+						//		amplitude += (slideAv.last() - slideAv.first()) / expectedSize;
+						//		slideAv.erase(slideAv.begin());
+						//	}
+						//	else
+						//	{
+						//		amplitude = (amplitude * (slideAv.size() - 1) + slideAv.last()) / slideAv.size();
+						//	}
+						//	
+						//	if ((params_.relativeLength < start) && (amplitude != 0))
+						//	{
+						//		calculate = true;
+						//	}
+						//}
+						//else if (params_.method == HypoParams::Reference)
+						//{
+						//	if ((params_.referenceStart <= start) && (start < params_.referenceEnd))
+						//	{
+						//		startAnalisys = true;
+						//		
+						//		RawData::value_type aTemp = 0;
+						//		for (int j = 1; j < mmp.size(); j++)
+						//		{
+						//			aTemp += qAbs(rawdata[mmp[j]] - rawdata[mmp[j - 1]]);
+						//		}
+						//		
+						//		amplitude += aTemp / mmp.size();
+						//		amplitude /= 2;
+						//	}
+						//	else
+						//	{
+						//		if (startAnalisys)
+						//		{
+						//			calculate = true;
+						//		}
+						//	}
+						//}
+
+						//if (calculate = true)
+						//{
+						//	for (int j = 1; j < mmp.size(); j++)
+						//	{
+						//		if ((params_.percentValue() * amplitude) > qAbs(rawdata[mmp[j]] - rawdata[mmp[j - 1]]))
+						//		{
+						//			if (hypopnea)
+						//			{
+						//				if ((mmp[j] + start) >= (tenSecs + hypoStart))
+						//				{
+						//					hypoEnd = mmp[j] + start;
+						//						
+						//					if (hypoArray.size() >= 1)
+						//					{
+						//						if (hypoStart != hypoArray.last().first)
+						//						{
+						//							hypoArray.push_back(qMakePair(hypoStart, hypoEnd));
+						//						}
+						//						else
+						//						{
+						//							hypoArray.last().second = hypoEnd;
+						//						}
+						//					}
+						//					else
+						//					{
+						//						hypoArray.push_back(qMakePair(hypoStart, hypoEnd));
+						//					}
+						//				}
+						//			}
+						//			else
+						//			{
+						//				hypopnea = true;
+						//				hypoStart = mmp[j] + start;
+						//			}
+						//		}
+						//		else
+						//		{
+						//			hypopnea = false;
+						//		}
+						//	}
+						//}
+						//----------- END OF HYPOPNEA ANALYSIS -----------
+					}
+
+					for (int iPos =- secPerUnit(); iPos < (2 * secPerUnit()); ++iPos)
+					{
+						if (((iPos + iCount) >= 0) && ((iPos + iCount) < m_values.size()))
+						{
+							for (int j = 0; j < mmp.size(); j++)
+							{
+								if ((qAbs(mmp[j] + timePiece - pEnv->sec2sample(iPos + secPerUnit())) < timePiece/2))
+								{
+									m_values[iPos + iCount] += 1; //0.5;
+									if (j > 1)
+										dsec_[iPos + iCount] += mmp[j] - mmp[j - 2];
+								}
+							}
+							
+							if (m_values[iPos + iCount] != 0)
+								dsec_[iPos + iCount] /= (timePiece / 100 * m_values[iPos + iCount]);
+						}
+					}
+					
+					splash->showMessage(msg + QString("%1 %").arg((i * 100) / nPieces), Qt::AlignBottom);
+				}
+
+				for (int i = 0; i < m_values.size(); ++i)
+				{
+					qreal temp = (qreal)m_values[i] * (60.0 / (2.0 * (qreal)secPerUnit()));
+					m_values[i] = (uchar)qRound(temp);
+				}
+
+				if (params_.automatic)
+				{
+					//----------- Запись в базу данных -----------
+					for (int i = 0; i < hypoArray.size(); ++i)
+					{
+						Episode e(pEnv->sample2secs(hypoArray[i].first), pEnv->sample2secs(hypoArray[i].second), Episode::Hypopnea);
+						if (e.length() <= params_.maxDuration)
+						{
+							bool tryInsert = true;
+							if (params_.hypoAfterDesaturationMode)
+							{
+								if (!e.followedBy(params_.hypoAfterDesaturationLength, Episode::Desaturation))
+								{
+									tryInsert = false;
+								}
+							}
+
+							if (tryInsert)
+							{
+								e.insert();
+							}
+						}
+					}
+					//--------------------------------------------
+				}
+
+				QDataStream outCan(&canFile);
+				outCan.setVersion(QDataStream::Qt_4_7);
+				uchar canVal;
+				foreach (canVal, m_values)
+					outCan << canVal;
+
+				QDataStream outSec(&secFile);
+				outSec.setVersion(QDataStream::Qt_4_7);
+				uchar secVal;
+				foreach (secVal, dsec_)
+					outSec << secVal;
+			}
+		}
+		else
+		{
+			QMessageBox msgBox;
+			msgBox.setText(QObject::tr("Ошибка при создании файла Cannula."));
+			msgBox.exec();
+		}
+	}
+	else
+	{
+		QDataStream inCan(&canFile);
+		uchar canVal;
+		if (inCan.version() == QDataStream::Qt_4_7)
+		{
+			while (true)
+			{
+				inCan >> canVal;
+				if (inCan.status() != QDataStream::ReadPastEnd)
+					m_values.push_back(canVal);
+				else
+					break;
+			}
+		}
+		
+		QDataStream inSec(&secFile);
+		uchar secVal;
+		if (inSec.version() == QDataStream::Qt_4_7)
+		{
+			while (true)
+			{
+				inSec >> secVal;
+				if (inSec.status() != QDataStream::ReadPastEnd)
+					dsec_.push_back(secVal);
+				else
+					break;
+			}
+		}
+	}
+
+	compress();
+}
+
+Cannula::~Cannula()
+{
+}
+
+void Cannula::build(RawData &data, MMData &mmpos)
+{
+	bool sfmin = FALSE, sfmax = FALSE;
+	int s = 0, p = 0, q = 0, av = 0;
+	
+	int avDep = std::min<size_t>(data.size(), 205);
+	float sumVal = 0;
+	int avLen = avDep;
+
+	for(int i = 0; i < avDep; i++)
+		sumVal += data[i];
+
+	for(int i = 0; i < (int)data.size(); i++)
+	{
+		if (i < (int)data.size() - avDep)
+		{
+			sumVal += data[i + avDep];
+			avLen++;
+		}
+		if (i >= avDep)
+		{
+			sumVal -= data[i - avDep];
+			avLen--;
+		}
+		data[i] = sumVal/avLen;
+	}
+	
+	for(int i = 0; i < ((int)data.size() - 4); i++)
+	{
+		while((int)data[i] == (int)data[i + 1])
+		{
+			av += (int)data[i];
+			if (i < (int)data.size() - 2)
+				i++;
+			else
+				break;
+		}
+
+		if ((int)data[i] < (int)data[i + 1])
+		{
+			if ((sfmin == TRUE)||(sfmin == sfmax))
+			{
+				min_[q] = (int)data[i];
+				minpos_[q] = i;
+				q++;
+			}
+			sfmax = TRUE;
+			sfmin = FALSE;
+		}
+		else
+		{
+			if ((int)data[i] > (int)data[i+1])
+			{
+				if ((sfmax==TRUE)||(sfmin == sfmax))
+				{
+					max_[p] = (int)data[i];
+					maxpos_[p] = i;
+					p++;
+				}
+				sfmin = TRUE;
+				sfmax = FALSE;
+			}
+		}
+		av += (int)data[i];
+	}
+
+	if ((int)data[data.size() - 2] < (int)data[data.size() - 1])
+	{
+		max_[p] = (int)data[data.size() - 1];
+		maxpos_[p] = data.size() - 1;
+		p++;
+	}
+	else
+		if ((int)data[data.size() - 2] > (int)data[data.size() - 1])
+		{
+			min_[q] = (int)data[data.size() - 1];
+			minpos_[q] = data.size() - 1;
+			q++;
+		}
+		
+	av += (int)data[data.size() - 1];
+	av /= data.size();
+
+	for(int i = 0; i < q - 1; i++)
+	{
+		int j;
+		for (j = 0; j < p; j++)
+		{
+			if ((minpos_[i] < maxpos_[j])&&(maxpos_[j] < minpos_[i + 1]))
+			{
+				break;
+			}
+		}
+		if (j == p)
+		{
+			if (min_[i] >= min_[i + 1])
+			{
+				for (j = i; j < q - 1; j++)
+				{
+					min_[j] = min_[j + 1];
+					minpos_[j] = minpos_[j + 1];
+				}
+			}
+			else
+			{
+				min_[i + 1] = min_[i];
+				minpos_[i + 1] = minpos_[i];
+				for (j = i; j < q - 1; j++)
+				{
+					min_[j] = min_[j + 1];
+					minpos_[j] = minpos_[j + 1];
+				}
+			}
+			q--;
+			i--;
+		}
+	}
+
+	for(int i = 0; i < p - 1; i++)
+	{
+		int j;
+		for (j = 0; j < q; j++)
+		{
+			if ((maxpos_[i] < minpos_[j])&&(minpos_[j] < maxpos_[i + 1]))
+			{
+				break;
+			}
+		}
+		if (j == q)
+		{
+	 		if (max_[i] <= max_[i + 1])
+			{
+				for (j = i; j < p - 1; j++)
+				{
+					max_[j] = max_[j+1];
+					maxpos_[j] = maxpos_[j+1];
+				}
+			}
+			else
+			{
+				max_[i + 1] = max_[i];
+				maxpos_[i + 1] = maxpos_[i];
+				for (j = i; j < p - 1; j++)
+				{
+					max_[j] = max_[j + 1];
+					maxpos_[j] = maxpos_[j + 1];
+				}
+			}
+			p--;
+			i--;
+		}
+	}
+
+	
+
+	int jMax = 0;
+	int jMin = 0;
+	int* resBuff = new int[data.size()];
+	mmpos.resize(p + q);
+	int* maxmin = new int[p + q];	
+
+	int iPos = 0;
+	while ((jMax < p)||(jMin < q))
+	{
+		mmpos[iPos] = iPos;
+		maxmin[iPos] = (int)data[0];
+
+		if ((jMax >= p)&&(jMin < q))
+		{
+			mmpos[iPos] = minpos_[jMin];
+			maxmin[iPos] = min_[jMin];
+			jMin++;
+		}
+		else
+			if ((jMax < p)&&(jMin >= q))
+			{
+				mmpos[iPos] = maxpos_[jMax];
+				maxmin[iPos] = max_[jMax];
+				jMax++;
+			}
+			else
+			{
+				if (maxpos_[jMax] > minpos_[jMin])
+				{
+					mmpos[iPos] = minpos_[jMin];
+					maxmin[iPos] = min_[jMin];
+					jMin++;
+				}
+				else
+				{
+					mmpos[iPos] = maxpos_[jMax];
+					maxmin[iPos] = max_[jMax];
+					jMax++;
+				}
+			}
+		iPos++;
+	}
+
+	// Зарезаем "вялые" мин-максы
+	for(int i = 1; i < iPos; i++)
+	{
+		if (abs(maxmin[i - 1] - maxmin[i]) < av/100)
+		{
+			for(int j = i - 1; j < iPos - 1; j++)
+			{
+				maxmin[j] = maxmin[j + 1];
+				mmpos[j] = mmpos[j + 1];
+			}
+			iPos--;
+			mmpos.pop_back();
+			i--;
+		}
+	}
+}
+
+#define smooth_te 200//25 
+
+Cannula::Waves &Cannula::build(RawData &can, RawData &smoothed, Cannula::Waves &waves)
+{
+	//RawData::value_type aveIr = median(ir);//Subtract<RawData::value_type>(ir, 32767);
+
+	// 737 is Zero Level for small device
+	EnvironmentPtr pEnv;
+	ReportParams reportParams;
+	pEnv->reportParams(reportParams);
+
+	//if (aveIr >= params_.rightDataLevel)
+	{
+		//RawData::value_type aveRed = median(red);//Subtract<RawData::value_type>(red, 32767);
+		std::copy(can.begin(), can.end(), smoothed.begin());
+		smooth<RawData::value_type>(smoothed, smooth_te);
+
+		int p = 0, q = 0;
+		findMinMax<RawData::value_type>(smoothed, &maxpos_[0], &minpos_[0], p, q);
+
+		// find minmax poses for raw data	
+		QVector<int>::iterator iMaxPoses = &maxpos_[0];//.begin();
+		QVector<int>::iterator iMinPoses = &minpos_[0];//.begin();
+		
+		if (*iMinPoses > *iMaxPoses)
+		{
+			if (q < p)
+			{
+				--p;
+			}
+		}
+		else
+		{
+			if (p == (q + 1))
+			{
+				--p;
+			}
+			++iMinPoses;
+			--q;
+		}
+		
+		for(int i = 0; i < std::min<int>(p, q); ++i)
+		{
+			RawData::iterator			fiMax	= std::max_element(can.begin() + *(iMaxPoses + i), can.begin() + *(iMinPoses + i));
+			RawData::difference_type	mxPos	= fiMax - can.begin();
+			
+			RawData::iterator			fiMin	= std::min_element(can.begin() + *(iMaxPoses + i), can.begin() +  *(iMinPoses + i));
+			RawData::difference_type	mnPos	= fiMin - can.begin();
+
+			//mxPos = *(iMaxPoses + i);
+			//mnPos = *(iMinPoses + i);
+			
+			waves.push_back(Wave(mxPos, mnPos, (can[mxPos] - can[mnPos])));
+		}
+	}
+
+	return waves;
+}
+
+void Filter()
+{
+	float	w = 1.0 / 3.2,//005 Гц фильтр
+			T = 1.0 / 1000;
+	float	A = (2 / (T * w)) / (1 + (2 / (T * w))),
+			B = (1 - (2 / (T * w))) / (1 + (2 / (T * w)));
+	////////////////////////////////////
+	//y(n) = (x(n)-x(n-1)*A - y(n-1)*B// 
+	////////////////////////////////////
+	float	av[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			bv[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+	/*for (int j = 0; j < COMNumbOfChan; j++)
+	{
+		dataCOM_ECG[IndataCOM_ECG][indDataCOM_ECG + j] = (hard18data[j].val - av[j]) * A - bv[j] * B;
+		av[j] = hard18data[j].val;
+		bv[j] = hard18data[j].val + hard18data[j].dif;
+		dataCOM_ECG[IndataCOM_ECG][indDataCOM_ECG + NumbOfChan + j] = hard18data[j].dif * A - dataCOM_ECG[IndataCOM_ECG][indDataCOM_ECG + j] * B;	
+	}
+
+	indDataCOM_ECG += 2 * NumbOfChan;*/
+}
+
+
+void Cannula::NewAnalysis(Cannula::Waves &waves, RawData::value_type &amplitude, bool &hypopnea, int &hypoStart, int &hypoEnd, int &start)
+{
+	EnvironmentPtr pEnv;
+	QDateTime qtimeS = pEnv->sample2NativTime(hypoStart);
+	
+	int hourS	=	qtimeS.time().hour();
+	int minutS	=	qtimeS.time().minute();
+	int secondS	=	qtimeS.time().second();
+
+	QDateTime qtimeE = pEnv->sample2NativTime(hypoEnd);
+	
+	int hourE	=	qtimeE.time().hour();
+	int minutE	=	qtimeE.time().minute();
+	int secondE	=	qtimeE.time().second();
+
+
+	QDateTime qtime = pEnv->sample2NativTime(start);
+	
+	int hour	=	qtime.time().hour();
+	int minut	=	qtime.time().minute();
+	int second	=	qtime.time().second();
+	for (int j = 0; j < waves.size(); j++)
+	{
+		//else
+		{
+			if ((params_.percentValue() * amplitude) > waves[j].amplitude)
+			{
+				if (hypopnea)
+				{
+					if ((waves[j].mxPos + start) >= (1 + hypoStart))//3 temporary
+					{
+						hypoEnd = waves[j].mxPos + start;
+
+						if (hypoArray.size() >= 1)
+						{
+							if (hypoStart != hypoArray.last().first)
+							{
+								hypoArray.push_back(qMakePair(hypoStart, hypoEnd));
+							}
+							else
+							{
+								hypoArray.last().second = hypoEnd;
+
+								if (pEnv->sample2secs(hypoArray.last().second - hypoArray.last().first) > 10)
+								{
+									hypopnea = false;
+									amplitude = waves[j].amplitude;//заново ищем опорную амплитуду
+								}
+							}
+						}
+						else
+						{
+							hypoArray.push_back(qMakePair(hypoStart, hypoEnd));
+						}
+					}
+				}
+				else
+				{
+					hypopnea = true;
+					hypoStart = waves[j].mxPos + start;
+				}
+			}
+			else
+			{
+				hypopnea = false;				
+			}
+		}
+
+		if (amplitude < waves[j].amplitude)
+		{
+			amplitude = waves[j].amplitude;
+		}
+	}
+}

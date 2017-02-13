@@ -1,0 +1,74 @@
+#ifndef RICHEDIT_H
+#define RICHEDIT_H
+
+#include <QtGui/QWidget>
+
+QT_FORWARD_DECLARE_CLASS(QPushButton)
+QT_FORWARD_DECLARE_CLASS(QTextEdit)
+QT_FORWARD_DECLARE_CLASS(QTextCharFormat)
+QT_FORWARD_DECLARE_CLASS(QComboBox)
+QT_FORWARD_DECLARE_CLASS(QFontComboBox)
+QT_FORWARD_DECLARE_CLASS(QTextDocument)
+
+class RichEdit: public QWidget
+{
+	Q_OBJECT
+
+public:
+	RichEdit(QWidget *parent = 0);
+
+	QTextDocument *document() const;
+	QTextEdit *editor() const;
+
+public Q_SLOTS:
+	void load(const QString &filename);
+	void save(const QString &filename);
+
+private Q_SLOTS:
+	void textFamily(const QString &family);
+	void textSize(const QString &pt);
+	void textStyle(int styleIndex);
+	void textBold();
+	void textUnderline();
+	void textItalic();
+	void textLeft();
+	void textCenter();
+	void textRight();
+	void textJustify();
+	void textColor();
+	void clipboardDataChanged();
+	void currentCharFormatChanged(const QTextCharFormat &format);
+	void cursorPositionChanged();
+
+private:
+	void mergeFormatOnWordOrSelection(const QTextCharFormat &format);
+	void fontChanged(const QFont &font);
+	void colorChanged(const QColor &color);
+	void alignmentChanged(Qt::Alignment aligment);
+	void alignmentUncheckButtons();
+
+	QComboBox     *comboStyle;
+	QFontComboBox *comboFont;
+	QComboBox     *comboSize;
+
+	QPushButton *buttonUndo;
+	QPushButton *buttonRedo;
+	QPushButton *buttonCut;
+	QPushButton *buttonCopy;
+	QPushButton *buttonPaste;
+
+	QPushButton *buttonBold;
+	QPushButton *buttonUnderline;
+	QPushButton *buttonItalic;
+
+	QPushButton *buttonLeft;
+	QPushButton *buttonCenter;
+	QPushButton *buttonRight;
+	QPushButton *buttonJustify;
+
+	QPushButton *buttonColor;
+
+	QTextEdit	*textEdit;
+};
+
+#endif // RICHEDIT_H

@@ -1,0 +1,37 @@
+#ifndef CURVES_H
+#define CURVES_H
+
+#include <QtGui/QPainter>
+
+class DataCurve
+{
+public:
+	explicit	DataCurve(int dataIndex);
+
+	int			index() const;
+	int			sampleCount() const;
+	void		setSampleCount(int sampleCount);
+	int			sampleStart() const;
+	void		setSampleStart(int sampleStart);
+	double		zoom() const;
+	void		setZoom(double zoom);
+
+	virtual void draw(QPainter *painter, const QRect &rect, int zero = 0) const;
+
+private:
+	int			index_;
+	int			sampleCount_;
+	int			sampleStart_;
+	double		zoom_;
+};
+
+class Spo2Curve: public DataCurve
+{
+public:
+	Spo2Curve();
+	~Spo2Curve();
+
+	void draw(QPainter *painter, const QRect &rect) const;
+};
+
+#endif // CURVES_H

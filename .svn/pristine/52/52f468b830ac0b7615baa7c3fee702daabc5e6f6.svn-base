@@ -1,0 +1,17 @@
+#ifndef BODYPOSITIONCOLORWND_H
+#define BODYPOSITIONCOLORWND_H
+
+#include <QtGui/QWidget>
+
+class BodyPositionColorWidget : public QWidget
+{
+	Q_OBJECT
+
+public:
+	BodyPositionColorWidget(QWidget *parent = 0);
+	~BodyPositionColorWidget();
+
+	QImage*			BodyPositionColorImage;
+};
+
+#endif // BODYPOSITIONCOLORWND_H

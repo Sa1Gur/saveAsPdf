@@ -1,0 +1,50 @@
+#ifndef EPISODEWND_H
+#define EPISODEWND_H
+
+#include <QtGui/QToolButton>
+#include "main/episode.h"
+
+class EpisodeWnd: public QWidget
+{
+	Q_OBJECT
+	Q_PROPERTY(int bsec READ bsec)
+	Q_PROPERTY(int length READ length)
+
+public:
+	EpisodeWnd(const Episode &episode, QWidget *parent = 0, QWidget *main = 0);
+	~EpisodeWnd();
+
+	int bsec() const;
+	int length() const;
+
+public slots:
+	void delEpisode();
+	void changeEpisodeType(QAction*);
+
+signals:
+	void doUpdateView();
+
+protected:
+	void paintEvent(QPaintEvent *e);
+	void contextMenuEvent(QContextMenuEvent *e);
+	void mouseMoveEvent(QMouseEvent *e);
+	void mousePressEvent(QMouseEvent *e);
+	void mouseReleaseEvent(QMouseEvent *e);
+	void resizeEvent(QResizeEvent *e);
+	void keyPressEvent(QKeyEvent *e);
+
+	static const int minLength = 3000;//10000; // ms
+
+private:
+	Episode			m_episode;
+	QRect			m_sbRight; // right sizebar
+	QRect			m_sbLeft; // left sizebar
+	bool			m_rflag;
+	bool			m_lflag;
+	bool			m_middle;
+	QPoint			m_prev;
+	QToolButton*	m_delButton;
+	int				m_distance; // distance in msecs from drag start point
+};
+
+#endif // EPISODEWND_H

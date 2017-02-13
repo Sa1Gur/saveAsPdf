@@ -1,0 +1,50 @@
+#ifndef DATAWND_H
+#define DATAWND_H
+//#include "main/episode.h"
+#include "main/curves.h"
+#include "scalewnd.h"
+#include "episodewnd.h"
+
+#include <QtGui/QHBoxLayout>
+
+class DataWnd: public QWidget
+{
+	Q_OBJECT
+
+public:
+	DataWnd(int index, QWidget *parent = 0);
+	~DataWnd();
+
+	QSize minimumSizeHint() const;
+	QSize sizeHint() const;
+
+	void zoomIn();
+	void zoomOut();
+
+signals:
+	void doUpdateView();
+	void delEp(Episode episode);
+
+public slots:
+	void placeEpisodes();
+	void clearEpisodes();
+	void scale_Change(int Index);
+	void setScale(const Scale::Unit &scale);
+	void deleteEpisode(Episode episode);
+
+protected:
+	void resizeEvent(QResizeEvent *event);
+	bool eventFilter(QObject *target, QEvent *e);
+	void onPaintView();
+
+private:
+	QHBoxLayout*	m_layout;
+	ScaleWnd*		m_scale;
+	QWidget*		m_view;
+	DataCurve*		m_curve;
+	QPixmap			m_pixmap;
+	QList<EpisodeWnd *>		m_ews;
+	int				m_index;
+};
+
+#endif // DATAWND_H

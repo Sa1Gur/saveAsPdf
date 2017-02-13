@@ -1,0 +1,67 @@
+#include "timewnd.h"
+#include "main/environment.h"
+#include <QtGui/QStylePainter>
+
+TimeWnd::TimeWnd(QWidget *parent)
+: QWidget(parent)
+{
+}
+
+QSize TimeWnd::minimumSizeHint() const
+{
+	return QSize(500 - PanelWidth, 24);
+}
+
+QSize TimeWnd::sizeHint() const
+{
+	return QSize(1000 - PanelWidth, 24);
+}
+
+void TimeWnd::paintEvent(QPaintEvent *event)
+{
+	pixmap = QPixmap( size() );
+	pixmap.fill(this, 0, 0);
+	QPainter painter(&pixmap);
+	painter.initFrom(this);
+
+
+	QPalette palette(palette());
+	painter.setPen(palette.color(QPalette::Active, QPalette::Dark));
+	painter.drawLine(rect().bottomLeft() - QPoint(0,1), rect().bottomRight() - QPoint(0,1));
+	painter.setPen(palette.color(QPalette::Active, QPalette::Light));
+	painter.drawLine(rect().bottomLeft(), rect().bottomRight());
+
+	QRect rc(rect().topLeft() + QPoint(PanelWidth,1), rect().bottomRight() - QPoint(0, 1));
+
+	EnvironmentPtr pEnv;
+	int ms = pEnv->msecsPerScreen();
+	QDateTime time( pEnv->sample2NativTime(pEnv->currentSample()) );
+	int optimum = (ms >= ONE_MIN) ? 300 : 200;
+	int val = (ms >= ONE_MIN) ? ((ms / (ONE_MIN/2)) * ONE_SEC) : (ms / (optimum / 5));
+	int freq = 5 * (6 / (ms / ONE_SEC) + 1);
+
+	painter.setPen(palette.color(QPalette::Active, QPalette::Text));
+
+	for(int i = 0, j = 0; i <= ms; i += val, ++j)
+	{
+		int xpos = rc.left() + (rc.width() * i)/ms;
+		if (xpos > rc.right())
+			xpos = rc.right();
+
+		if (j % freq) {
+			painter.drawLine(xpos, rc.top(), xpos, rc.top()+4);
+		}
+		else {
+			painter.drawLine(xpos, rc.top(), xpos, rc.top()+8);
+			QRect rct(xpos-30, rc.top()+10, 60, 10);
+			painter.drawText(rct, Qt::AlignCenter, time.toString("hh:mm:ss"));
+		}
+
+		time = time.addMSecs(val);
+	}
+
+	{
+		QStylePainter painter(this);
+		painter.drawPixmap(0, 0, pixmap);
+	}
+}

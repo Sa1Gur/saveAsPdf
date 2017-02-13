@@ -1,0 +1,17 @@
+<RCC>
+    <qresource prefix="/RichEdit">
+        <file>images/richedit.png</file>
+        <file>images/textbold.png</file>
+        <file>images/textitalic.png</file>
+        <file>images/textunder.png</file>
+        <file>images/textcenter.png</file>
+        <file>images/textjustify.png</file>
+        <file>images/textleft.png</file>
+        <file>images/textright.png</file>
+        <file>images/editcopy.png</file>
+        <file>images/editcut.png</file>
+        <file>images/editpaste.png</file>
+        <file>images/editredo.png</file>
+        <file>images/editundo.png</file>
+    </qresource>
+</RCC>

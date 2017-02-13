@@ -1,0 +1,133 @@
+#ifndef EVENTSTATISTICCLASSES_H
+#define EVENTSTATISTICCLASSES_H
+
+#include <QtCore/QVector>
+#include <QtGui/QVector2D>
+
+#include "main/episode.h"
+
+/*!
+Статистика по эпизодам сна
+*/
+class Dreams
+{
+public:
+	Dreams();
+	~Dreams();
+
+	bool contains(const Episode &episode) const;
+	bool contains(int second) const;
+	int length() const;
+
+private:
+	QVector<Episode *> m_dreams;
+};
+
+/*!
+Статистика по эпизодам апноэ
+*/
+class Apneas
+{
+public:
+	Apneas(const Dreams &dreams);
+
+	int num(int which) const;
+	int avg(int which) const;
+	int min(int which) const;
+	int max(int which) const;
+	qreal ahi(int which) const;
+
+private:
+	int m_centrNum;
+	int m_centrAvg;
+	int m_centrMin;
+	int m_centrMax;
+	int m_obstrNum;
+	int m_obstrAvg;
+	int m_obstrMin;
+	int m_obstrMax;
+	int m_hypopNum;
+	int m_hypopAvg;
+	int m_hypopMin;
+	int m_hypopMax;
+	int m_dreamLen;
+};
+
+
+
+/*!
+Статистика по эпизодам десатурации
+*/
+class Desaturations
+{
+public:
+	Desaturations(const Dreams &dreams);
+
+	int num(int from, int to) const;
+	qreal odi(int from, int to) const;
+	int total() const;
+	qreal totalODI() const;
+
+private:
+	int m_num_2;
+	int m_num_3;
+	int m_num_4_9;
+	int m_num_10_20;
+	int m_numMore_20;
+	int m_dreamsLen;
+};
+
+
+
+/*!
+Статистика по данным сатурации
+*/
+class Saturation
+{
+public:
+	Saturation(const Dreams &dreams);
+	void	reload(const Dreams &dreams);
+	qreal	duration(int from, int to) const;
+	int base() const;
+	int avg() const;
+	int min() const;
+	int minPos() const;
+	int max() const;
+
+	typedef QPair<int, int> Interval;
+	typedef QMap<Interval, qreal> BreakdownTable;
+
+private:
+	BreakdownTable m_bdt;
+	int m_base;
+	int m_avg;
+	int m_min;
+	int m_minPos;
+	int m_max;
+};
+
+/*!
+Pulse statistic
+*/
+class Pulse
+{
+public:
+	Pulse(const Dreams &dreams);
+	void reload(const Dreams &dreams);
+
+	int avg() const;
+	int min() const;
+	int minPos() const;
+	int max() const;
+
+	typedef QPair<int, int> Interval;
+	typedef QMap<Interval, qreal> BreakdownTable;
+
+private:
+	int m_avg;
+	int m_min;
+	int m_minPos;
+	int m_max;
+};
+
+#endif //EVENTSTATISTICCLASSES_H

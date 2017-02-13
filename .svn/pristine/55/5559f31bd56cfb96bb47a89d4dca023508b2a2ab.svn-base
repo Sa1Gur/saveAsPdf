@@ -1,0 +1,139 @@
+#include "mainwnd.h"
+
+#include <QtGui/QApplication>
+#include <QtCore/QTextCodec>
+#include <QtCore/QFile>
+#include <QtGui/QSplashScreen>
+
+#include "environment.h"
+#include "trends/trends.h"
+#include "episode.h"
+
+#include <QtSql/QSqlDatabase>
+#include <QtSql/QSqlError>
+#include <QtSql/QSqlQuery>
+#include <QtCore/QDebug>
+#include <QtGui/QMessageBox>
+
+bool createConnection()
+{
+	EnvironmentPtr pEnv;
+	QString dbName(pEnv->createPath(Trends::fileEvents));
+
+	QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE");
+	db.setDatabaseName( dbName );
+
+	if (QFile::exists(dbName))
+	{
+		if (!db.open())
+		{
+			qDebug() << db.lastError();
+			return false;
+		}
+	}
+	else
+	{
+		if (!db.open())
+		{
+			qDebug() << db.lastError();
+			return false;
+		}
+		
+		QSqlQuery query;
+		bool res = query.exec("CREATE TABLE episodes (id   INTEGER PRIMARY KEY AUTOINCREMENT, bsec INTEGER, esec INTEGER, type INTEGER, bval REAL, eval REAL);");
+		if (res)
+		{
+			res = query.exec(QString("INSERT INTO episodes (bsec, esec, type, bval, eval) VALUES(0, %1, %2, 0, 0);").arg(pEnv->secsTotal()).arg(Episode::Wake));
+		}
+
+		if (res)
+		{
+			res = query.exec("CREATE TABLE types (id    INTEGER NOT NULL, title VARCHAR(40) NOT NULL, color INTEGER NOT NULL);");
+		}
+
+		if (res)
+		{
+			res = query.prepare("INSERT INTO types VALUES (?, 'Бодрствование', ?);");
+			query.addBindValue(Episode::Wake);
+			query.addBindValue(Episode::color(Episode::Wake));
+			res = query.exec();
+			
+			res = query.prepare("INSERT INTO types VALUES (?, 'Сон', ?);");
+			query.addBindValue(Episode::Dream);
+			query.addBindValue(Episode::color(Episode::Dream));
+			res = query.exec();
+			
+			res = query.prepare("INSERT INTO types VALUES (?, 'Артефакты', ?);");
+			query.addBindValue(Episode::Artefacts);
+			query.addBindValue(Episode::color(Episode::Artefacts));
+			res = query.exec();
+
+			res = query.prepare("INSERT INTO types VALUES (?, 'Десатурация', ?);");
+			query.addBindValue(Episode::Desaturation);
+			query.addBindValue(Episode::color(Episode::Desaturation));
+			res = query.exec();
+
+			res = query.prepare("INSERT INTO types VALUES (?, 'Гипопноэ', ?);");
+			query.addBindValue(Episode::Hypopnea);
+			query.addBindValue(Episode::color(Episode::Hypopnea));
+			res = query.exec();
+
+			res = query.prepare("INSERT INTO types VALUES (?, 'Центр. апноэ', ?);");
+			query.addBindValue(Episode::CentrApnea);
+			query.addBindValue(Episode::color(Episode::CentrApnea));
+			res = query.exec();
+
+			res = query.prepare("INSERT INTO types VALUES (?, 'Обстр. апноэ', ?);");
+			query.addBindValue(Episode::ObstrApnea);
+			query.addBindValue(Episode::color(Episode::ObstrApnea));
+			res = query.exec();
+		}
+
+		if (!res)
+		{
+			qDebug() << query.lastError();
+			return false;
+		}
+	}
+	
+	return true;
+}
+
+int main(int argc, char *argv[])
+{
+	QApplication a(argc, argv);
+
+	QTextCodec *codec = QTextCodec::codecForName("Windows-1251");
+	QTextCodec::setCodecForCStrings(codec);
+	QTextCodec::setCodecForTr(codec);
+	
+	QCoreApplication::setOrganizationName("Meditek Astrocard");
+	QCoreApplication::setOrganizationDomain("www.astrocard-meditek.com");
+	QCoreApplication::setApplicationName("Somno Studio");
+
+	QSplashScreen *splash = new QSplashScreen;
+	splash->setPixmap(QPixmap(":/MainWnd/logo.png"));
+	splash->show();
+
+	EnvironmentPtr pEnv;
+
+	splash->showMessage(QObject::tr("Соединение с базой данных..."), Qt::AlignBottom);
+	if  (!createConnection())
+	{
+		QMessageBox msgBox;
+		msgBox.setText(QSqlDatabase().lastError().text());
+		msgBox.exec();
+		return 1;
+	}
+
+	TrendsPtr trends;
+	trends->construct(splash);
+	
+	MainWnd w;
+	w.showMaximized();
+
+	splash->finish(&w);
+	delete splash;
+	
+	return a.exec();
+}
