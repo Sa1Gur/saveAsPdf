@@ -104,11 +104,13 @@ LRESULT CALLBACK WndProc( HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam)
 			NewPdfPage		NewPdfPageFunc		= (NewPdfPage)::GetProcAddress(hPdfDLL,		"NewPdfPage");
 			
 			InitiateQtAppFunc();
-			SetPaperSizeAndOrientationFunc(Legal, Landscape);
-			HDC hdc = GetPdfDCFunc();			
+						
 
 			if (InitiatePdfFunc((wchar_t*)pdfName))
 			{
+				SetPaperSizeAndOrientationFunc(Legal, Landscape);
+				HDC hdc = GetPdfDCFunc();
+
 				int Font1 = 400;
 				RECT diRECT = {0, 0, 2000, Font1};
 				SetBkColor(hdc, RGB(255, 255, 255));

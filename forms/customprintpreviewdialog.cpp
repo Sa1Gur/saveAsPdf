@@ -2,21 +2,16 @@
 
 SaveAsPdf::SaveAsPdf()
 {
-	n				= 3;
-	hdcPainter		= 0;
+	nScale			= 3;//for increasing quality of pictures
 	bitmapDC		= 0;
-
-	nWidth			= 2100;
-	nHeight			= 2970;	
 	
-
-	printerPDF		= new QPrinter();
-	im = 0;
+	printerPDF		= 0;
+	painter			= 0;
+	im				= 0;
 }
 
 SaveAsPdf::~SaveAsPdf()
 {
-	
 }
 
 void	SaveAsPdf::ReleasePdfDC(HDC hdc)
@@ -35,56 +30,88 @@ HDC		SaveAsPdf::GetPdfDC()
 
 		SetMapMode(bitmapDC,		MM_ANISOTROPIC);
 		SetWindowExtEx(bitmapDC,	nWidth,		nHeight,		NULL);
-		SetViewportExtEx(bitmapDC,	n * nWidth,	n * nHeight,	NULL);
+		SetViewportExtEx(bitmapDC,	nScale * nWidth,	nScale * nHeight,	NULL);
 	}
 	
 	return bitmapDC;
 }
 
+bool	SaveAsPdf::InitiatePdf(wchar_t* path)
+{
+	bool validEngine = false;
+
+	if (!printerPDF)
+	{
+		printerPDF = new QPrinter();
+	}
+
+	allowNewPage = false;
+
+	printerPDF->setOutputFormat(QPrinter::PdfFormat);
+	printerPDF->setOutputFileName(QString::fromUtf16(path));
+
+	if (!painter)
+	{
+		painter = new QPainter(printerPDF);
+
+		if (painter->paintEngine())
+		{
+			logX = painter->paintEngine()->paintDevice()->physicalDpiX();
+			logY = painter->paintEngine()->paintDevice()->physicalDpiY();
+
+			validEngine = true;
+		}
+
+		nPage = 0;
+	}
+
+	return validEngine;
+}
+
 void	SaveAsPdf::SetPaperSizeAndOrientation(QPrinter::PaperSize ps, QPrinter::Orientation or)
 {
+	if (!printerPDF)
+	{
+		printerPDF = new QPrinter();
+	}		
+
 	printerPDF->setPaperSize(ps);
 	printerPDF->setOrientation(or);
 
 	if (printerPDF->orientation() == QPrinter::Orientation::Landscape)
 	{
-		nWidth	= 2970;
-		nHeight	= 2100;
+		nWidth = 2970;
+		nHeight = 2100;
 	}
-
-	im				= new QDCWithImage(n * nWidth, n * nHeight);
-}
-
-bool	SaveAsPdf::InitiatePdf(wchar_t* path)
-{
-	bool validEngine = false;
-	allowNewPage = false;
-		
-	printerPDF->setOutputFormat(QPrinter::PdfFormat);
-	printerPDF->setOutputFileName(QString::fromUtf16(path));
-
-	painter = new QPainter(printerPDF);
-	
-	if (painter->paintEngine())
+	else
 	{
-		validEngine = true;
-
-		logX = painter->paintEngine()->paintDevice()->physicalDpiX();
-		logY = painter->paintEngine()->paintDevice()->physicalDpiY();
+		nWidth = 2100;
+		nHeight = 2970;
 	}
 
-	nPage = 0;
+	if (im)
+	{
+		im->releaseDC(bitmapDC);
+		delete im;
+		im = 0;
+	}
 
-	return validEngine;
+	im = new QDCWithImage(nScale * nWidth, nScale * nHeight);
 }
 
 void SaveAsPdf::CreatePdf()
 {	
-	im->releaseDC(bitmapDC);
-	delete im;
+	if (im)
+	{
+		im->releaseDC(bitmapDC);
+		delete im;
+		im = 0;
+	}
 
 	delete painter;
+	painter = 0;
 	delete printerPDF;
+	printerPDF = 0;
 }
 
 bool SaveAsPdf::newPage()
@@ -101,15 +128,14 @@ bool SaveAsPdf::newPage()
 
 void SaveAsPdf::PrintPagePdf()
 {
-	mainRect = new QRect(0, nPage * 297 * logY, 210 * logX, 297 * logY);
-	
+	auto coeff = (float)qimage.dotsPerMeterX() / 10000;
+	mainRect = new QRect(0, 0, coeff * nWidth, coeff * nHeight);
 	painter->fillRect(*mainRect, Qt::white);
-	painter->setWindow(*mainRect);
 	painter->drawImage(*mainRect, qimage);
 
 	qimage.fill(Qt::white);
 
-	delete mainRect;
+	delete mainRect;	
 
 	allowNewPage = true;
 }

@@ -128,11 +128,8 @@ public:
 	bool	InitiatePdf(wchar_t* path);
 	void	CreatePdf();
 	void	PrintPagePdf();
-	bool	newPage();
+	bool	newPage();	
 
-
-//private Q_SLOTS:
-	HDC				hdcPainter;
 	HDC				bitmapDC;
 	QPrinter*		printerPDF;
 	QPainter*		painter;
@@ -142,15 +139,10 @@ public:
 	int				nPage,
 					logX,
 					logY,
-					n;
+					nScale;
 	int				nWidth;
 	int				nHeight;
 	bool			allowNewPage;
-//signals:
-//	void paintRequested(QPrinter * printer);// QPrinter *);
-
-//private:
-//	QPrinter *m_printer;
 };
 
 #endif // SAVEASPDF_H

@@ -1,15 +1,8 @@
 #include <QtGui/QApplication>
 #include <QtCore/QTextCodec>
 #include <QtCore/QFile>
-#include <QtGui/QSplashScreen>
 
-#include <QtSql/QSqlDatabase>
-#include <QtSql/QSqlError>
-#include <QtSql/QSqlQuery>
-#include <QtCore/QDebug>
-#include <QtGui/QMessageBox>
-
-#include "forms/customprintpreviewdialog.h"
+#include "../forms/customprintpreviewdialog.h"
 
 extern "C"	__declspec( dllexport ) 	HDC		_cdecl	GetPdfDC();
 extern "C"	__declspec( dllexport ) 	void	_cdecl	SetPaperSizeAndOrientation(int ps, int or);
@@ -39,16 +32,18 @@ void	_cdecl	InitiateQtApp()
 		QTextCodec::setCodecForCStrings(codec);
 		QTextCodec::setCodecForTr(codec);
 
-		QCoreApplication::setOrganizationName("Company");
-		QCoreApplication::setOrganizationDomain("www.yourdomain.com");
-		QCoreApplication::setApplicationName("saveAsPdf"); 
+		QCoreApplication::setOrganizationName("Ltd Meditek");
+		QCoreApplication::setOrganizationDomain("www.astrocard-meditek.com");
+		QCoreApplication::setApplicationName("saveAsPdf");
+
+		SaveAsPdf_ = new SaveAsPdf();
 	}
 	else
 	{
-		delete SaveAsPdf_ ;
+		//delete SaveAsPdf_ ;
 	}
 	
-	SaveAsPdf_ = new SaveAsPdf();
+	//SaveAsPdf_ = new SaveAsPdf();
 }
 
 void SetPaperSizeAndOrientation(int ps, int or)
@@ -56,7 +51,7 @@ void SetPaperSizeAndOrientation(int ps, int or)
 	QPrinter::PageSize		ps_ = QPrinter::PageSize::A4;
 	QPrinter::Orientation	or_  = QPrinter::Orientation::Portrait;
 
-	switch (or)
+	switch (ps)
 	{	
 	case DMPAPER_LETTER:
 		ps_ = QPrinter::PageSize::Letter;
