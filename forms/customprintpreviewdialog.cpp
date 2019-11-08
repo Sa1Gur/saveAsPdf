@@ -73,12 +73,9 @@ void	SaveAsPdf::SetPaperSizeAndOrientation(QPrinter::PaperSize ps, QPrinter::Ori
 	if (!printerPDF)
 	{
 		printerPDF = new QPrinter();
-	}		
+	}	
 
-	printerPDF->setPaperSize(ps);
-	printerPDF->setOrientation(or);
-
-	if (printerPDF->orientation() == QPrinter::Orientation::Landscape)
+	if (or == QPrinter::Orientation::Landscape)
 	{
 		nWidth = 2970;
 		nHeight = 2100;
@@ -88,6 +85,9 @@ void	SaveAsPdf::SetPaperSizeAndOrientation(QPrinter::PaperSize ps, QPrinter::Ori
 		nWidth = 2100;
 		nHeight = 2970;
 	}
+
+	printerPDF->setPaperSize(QSizeF(nWidth / 10, nHeight / 10), QPrinter::Millimeter);
+	printerPDF->setFullPage(true);
 
 	if (im)
 	{

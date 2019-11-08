@@ -38,12 +38,6 @@ void	_cdecl	InitiateQtApp()
 
 		SaveAsPdf_ = new SaveAsPdf();
 	}
-	else
-	{
-		//delete SaveAsPdf_ ;
-	}
-	
-	//SaveAsPdf_ = new SaveAsPdf();
 }
 
 void SetPaperSizeAndOrientation(int ps, int or)
