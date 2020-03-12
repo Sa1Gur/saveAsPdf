@@ -25,9 +25,3 @@ No tests. Unfortunatly
 ## License
 
 This project is licensed under the Unlicense License - see the [LICENSE.md](https://unlicense.org/) file for details
-
-## Acknowledgments
-
-* Hat tip to anyone whose code was used
-* Inspiration
-* etc
